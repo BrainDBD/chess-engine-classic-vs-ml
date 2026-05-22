@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <iostream>
+#include <bit>
 
 using Bitboard = uint64_t;
 
@@ -25,7 +26,7 @@ namespace BitboardUtils {
         return __builtin_popcountll(board);
     }
 
-    void printBitboard(Bitboard board) {
+    inline void printBitboard(Bitboard board) {
         for (int rank = 7; rank >= 0; --rank) {
             for (int file = 0; file < 8; ++file) {
                 int square = rank * 8 + file;

@@ -3,16 +3,20 @@
 
 #include "bitboard.h"
 #include "types.h"
+#include "zobrist.h"
 #include <array>
 #include <string>
 
 class Board {
     private:
         Bitboard bb_[COLOR_NB][PIECE_TYPE_NB] = {}; // [color][pieceType]
-        std::array<Color,     SQUARE_NB> color_on_ = {};
-        std::array<PieceType, SQUARE_NB> piece_on_ = {};
-        bool whiteToMove;
-        int castlingRights;
+        std::array<Piece, SQUARE_NB> board_;
+        bool whiteToMove_;
+        int castlingRights_;
+        Square enPassantSquare_;
+        int halfmoveClock_;
+        int fullmoveNumber_;
+        uint64_t hash_;
 
     public:
         Board();
@@ -20,10 +24,14 @@ class Board {
 
         void loadFEN(const std::string& fen);
         std::string toFEN() const;
+        uint64_t hash() const { return hash_; }
 
         void makeMove();
         void undoMove();
-        bool canCastle(int rights) const;
+        bool canCastle(CastlingRights rights) const;
+    
+    private:
+        uint64_t computeHash() const;
 
 };
 
