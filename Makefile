@@ -1,6 +1,6 @@
 CXX      = g++
 CXXFLAGS = -std=c++17 -Wall -Isrc
-SRCS = src/main.cpp src/board.cpp src/zobrist.cpp src/attacks.cpp src/movegen.cpp src/eval.cpp
+SRCS = src/main.cpp src/board.cpp src/zobrist.cpp src/attacks.cpp src/movegen.cpp src/eval.cpp src/search.cpp
 TARGET   = chess
 
 $(TARGET): $(SRCS)

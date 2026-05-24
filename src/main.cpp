@@ -3,12 +3,13 @@
 #include "attacks.h"
 #include "movegen.h"
 #include "eval.h"
+#include "search.h"
 #include <iostream>
 
-static void evalCheck(Board& board, const std::string& fen, const std::string& label) {
-    board.loadFEN(fen);
-    std::cout << label << ": " << Eval::evaluate(board) << " cp\n";
-}
+// static void evalCheck(Board& board, const std::string& fen, const std::string& label) {
+//     board.loadFEN(fen);
+//     std::cout << label << ": " << Eval::evaluate(board) << " cp\n";
+// }
 
 uint64_t perft(Board& board, int depth) {
     if (depth == 0) return 1;
@@ -54,23 +55,18 @@ void perftDivide(Board& board, int depth) {
 int main() {
     Zobrist::init();
     Attacks::init();
-    Board board;
+    Board game;
+    game.loadFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
 
-    std::cout << "--- Eval sanity checks ---\n";
-    evalCheck(board, "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",   "Start      (expect ~0)");
-    evalCheck(board, "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1", "After 1.e4 (expect small +, white to move gone so score is for black)");
-    evalCheck(board, "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq e6 0 1","After 1.e4 e5 (expect ~0)");
-    evalCheck(board, "8/8/8/8/8/8/3P4/8 w - - 0 1", "Single pawn d2          ");
-    evalCheck(board, "8/8/8/8/8/3P4/3P4/8 w - - 0 1", "Doubled pawns d2+d3 (doubled penalty should make this < 2x single)");
+    auto result = Search::search(game, 5);
 
-    std::cout << '\n';
-
-    // board.loadFEN("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1");
-
-    // for (int depth = 1; depth <= 3; ++depth)
-    //     std::cout << "Depth " << depth << ": " << perft(board, depth) << '\n';
-
-    // std::cout << "\n--- Divide depth 2 ---\n";
-    // perftDivide(board, 3);
+    char ff = 'a' + result.bestMove.from() % 8;
+    char fr = '1' + result.bestMove.from() / 8;
+    char tf = 'a' + result.bestMove.to()   % 8;
+    char tr = '1' + result.bestMove.to()   / 8;
+    std::cout << "Best move: " << ff << fr << tf << tr
+            << "  score: "   << result.score << " cp"
+            << "  depth: "   << result.depth << '\n';
+    
     return 0;
 }
