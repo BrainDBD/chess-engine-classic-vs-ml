@@ -38,13 +38,11 @@ enum Piece
     PIECE_NB = 16
 };
 
-inline PieceType typeOf(Piece p) {
-    return static_cast<PieceType>((p & 7) - 1);
-}
+inline PieceType typeOf(Piece p) { return static_cast<PieceType>((p & 7) - 1); }
 
-inline Color colorOf(Piece p) {
-    return static_cast<Color>(p >> 3);
-}
+inline Color colorOf(Piece p) { return static_cast<Color>(p >> 3); }
+
+inline Color operator~(Color c) { return Color (c ^ 1); }
 
 inline Piece makePiece(Color c, PieceType pt) {
     return static_cast<Piece>((static_cast<int>(c) << 3) | (static_cast<int>(pt) + 1));

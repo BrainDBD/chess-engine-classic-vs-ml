@@ -6,7 +6,15 @@
 #include "zobrist.h"
 #include <array>
 #include <string>
+#include <vector>
 
+struct UndoInfo {
+    Piece captured;
+    Square enPassantSquare;
+    int castlingRights;
+    int halfmoveClock;
+    uint64_t hash;
+};
 class Board {
     private:
         Bitboard bb_[COLOR_NB][PIECE_TYPE_NB] = {}; // [color][pieceType]
@@ -17,6 +25,7 @@ class Board {
         int halfmoveClock_;
         int fullmoveNumber_;
         uint64_t hash_;
+        std::vector<UndoInfo> history_;
 
     public:
         Board();
@@ -26,12 +35,15 @@ class Board {
         std::string toFEN() const;
         uint64_t hash() const { return hash_; }
 
-        void makeMove();
-        void undoMove();
+        Color sideToMove() const { return whiteToMove_ ? WHITE : BLACK; }
+        void makeMove(Move move);
+        void undoMove(Move move);
         bool canCastle(CastlingRights rights) const;
     
     private:
         uint64_t computeHash() const;
+        void putPiece(Square sq, Piece p);
+        void removePiece(Square sq);
 
 };
 

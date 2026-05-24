@@ -14,6 +14,7 @@ void Board::loadFEN(const std::string& fen) {
         for (int pieceType = 0; pieceType < PIECE_TYPE_NB; ++pieceType)
             bb_[color][pieceType] = 0ULL;
     board_.fill(NO_PIECE);
+    history_.clear();
     whiteToMove_ = true;
     castlingRights_ = NO_CASTLING;
     
@@ -161,4 +162,126 @@ uint64_t Board::computeHash() const {
         h ^= Zobrist::enPassant[enPassantSquare_ % 8];
 
     return h;
+}
+
+void Board::putPiece(Square sq, Piece p) {
+    board_[sq] = p;
+    BitboardUtils::setBit(bb_[colorOf(p)][typeOf(p)], sq);
+}
+
+void Board::removePiece(Square sq) {
+    Piece p = board_[sq];
+    board_[sq] = NO_PIECE;
+    BitboardUtils::clearBit(bb_[colorOf(p)][typeOf(p)], sq);
+}
+
+// Precompute a mask for which castling rights are lost when a piece moves from or to each square
+static const std::array<int, SQUARE_NB> initCastlingMask = []() {
+    std::array<int, SQUARE_NB> m;
+    m.fill(ANY_CASTLING);
+    m[SQ_A1] &= ~WHITE_OOO;
+    m[SQ_E1] &= ~WHITE_CASTLING;
+    m[SQ_H1] &= ~WHITE_OO;
+    m[SQ_A8] &= ~BLACK_OOO;
+    m[SQ_E8] &= ~BLACK_CASTLING;
+    m[SQ_H8] &= ~BLACK_OO;
+    return m;
+}();
+
+void Board::makeMove(Move move) {
+    // Record undo information
+    const Square from = move.from();
+    const Square to = move.to();
+    const Color us = sideToMove();
+    const Piece moving = board_[from];
+    const Piece captured = move.isEnPassant() ? makePiece(~us, PAWN) : board_[to];
+
+    history_.push_back({captured, enPassantSquare_, castlingRights_, halfmoveClock_, hash_});
+
+    // XOR out the state that will change
+    hash_ ^= Zobrist::castling[castlingRights_];
+    if (enPassantSquare_ != SQ_NONE)
+        hash_ ^= Zobrist::enPassant[enPassantSquare_ % 8];
+
+    // Remove captured piece
+    if (captured != NO_PIECE) {
+        Square captureSquare = move.isEnPassant() ? static_cast<Square>(to + (us == WHITE ? -8 : 8)) : to;
+        hash_ ^= Zobrist::piece[colorOf(captured)][typeOf(captured)][captureSquare];
+        removePiece(captureSquare);
+    }
+
+    // Move piece
+    hash_ ^= Zobrist::piece[colorOf(moving)][typeOf(moving)][from];
+    removePiece(from);
+
+    Piece pieceToPlace = move.isPromotion() ? makePiece(us, move.promotionType()) : moving;
+    putPiece(to, pieceToPlace);
+    hash_ ^= Zobrist::piece[colorOf(pieceToPlace)][typeOf(pieceToPlace)][to];
+
+    //If castling, move rook
+    if (move.isCastling()) {
+        const Square rookFrom = (to == SQ_G1) ? SQ_H1 : (to == SQ_C1) ? SQ_A1 : (to == SQ_G8) ? SQ_H8 : SQ_A8;
+        const Square rookTo   = (to == SQ_G1) ? SQ_F1 : (to == SQ_C1) ? SQ_D1: (to == SQ_G8) ? SQ_F8 : SQ_D8;
+        Piece rook = board_[rookFrom];
+        hash_ ^= Zobrist::piece[colorOf(rook)][typeOf(rook)][rookFrom];
+        removePiece(rookFrom);
+        putPiece(rookTo, rook);
+        hash_ ^= Zobrist::piece[colorOf(rook)][typeOf(rook)][rookTo];
+    }
+
+    //Update castling rights
+    castlingRights_ &= initCastlingMask[from] & initCastlingMask[to];
+
+    // Update en passant square
+    enPassantSquare_ = SQ_NONE;
+    if (typeOf(moving) == PAWN && (to - from == 16 || from - to == 16))
+        enPassantSquare_ = static_cast<Square>((from + to) / 2);
+    
+    //Update locks
+    halfmoveClock_ = (typeOf(moving) == PAWN || captured != NO_PIECE) ? 0 : halfmoveClock_ + 1;
+    if (!whiteToMove_) ++fullmoveNumber_;
+
+    // Flip side
+    whiteToMove_ = !whiteToMove_;
+    hash_ ^= Zobrist::sideToMove;
+
+    // XOR in new state
+    hash_ ^= Zobrist::castling[castlingRights_];
+    if (enPassantSquare_ != SQ_NONE)
+        hash_ ^= Zobrist::enPassant[enPassantSquare_ % 8];
+}
+
+void Board::undoMove(Move move) {
+    const UndoInfo& info = history_.back();
+    const Square from = move.from();
+    const Square to = move.to();
+    whiteToMove_ = !whiteToMove_;
+    const Color us = sideToMove();
+
+    // Undo promotion: piece at `to` is the promoted piece, put pawn back
+    Piece moveBack = move.isPromotion()? makePiece(us, PAWN) : board_[to];
+    removePiece(to);
+    putPiece(from, moveBack);
+
+    // Restore captured piece
+    if (info.captured != NO_PIECE) {
+        Square captureSquare = move.isEnPassant() ? static_cast<Square>(to + (us == WHITE ? -8 : 8)) : to;
+        putPiece(captureSquare, info.captured);
+    }
+
+    // Undo castling
+    if (move.isCastling()) {
+        const Square rookFrom = (to == SQ_G1) ? SQ_H1 : (to == SQ_C1) ? SQ_A1 : (to == SQ_G8) ? SQ_H8 : SQ_A8;
+        const Square rookTo   = (to == SQ_G1) ? SQ_F1 : (to == SQ_C1) ? SQ_D1 : (to == SQ_G8) ? SQ_F8 : SQ_D8;
+        removePiece(rookTo);
+        putPiece(rookFrom, makePiece(us, ROOK)); 
+    }
+
+    //  Restore state
+    castlingRights_ = info.castlingRights;
+    enPassantSquare_ = info.enPassantSquare;
+    halfmoveClock_ = info.halfmoveClock;
+    hash_ = info.hash;
+
+    history_.pop_back();
 }
