@@ -26,6 +26,16 @@ namespace BitboardUtils {
         return __builtin_popcountll(board);
     }
 
+    inline int lsb(Bitboard board) {
+        return __builtin_ctzll(board);  // index of lowest set bit
+    }
+
+    inline int popLsb (Bitboard& board) {
+        int sq = lsb(board);
+        board &= board - 1; // clear lower set bit
+        return sq;
+    }
+
     inline void printBitboard(Bitboard board) {
         for (int rank = 7; rank >= 0; --rank) {
             for (int file = 0; file < 8; ++file) {

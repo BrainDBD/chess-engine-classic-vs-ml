@@ -1,10 +1,12 @@
 #include "board.h"
 #include "zobrist.h"
+#include "attacks.h"
 #include <iostream>
 
 int main() {
-    Board b;
     Zobrist::init();
-    std::cout<<b.toFEN()<<std::endl;
+    Attacks::init();
+    Board b;
+    std::cout << b.toFEN() << '\n';
     return 0;
 }
