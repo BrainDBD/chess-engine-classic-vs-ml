@@ -285,3 +285,10 @@ void Board::undoMove(Move move) {
 
     history_.pop_back();
 }
+
+Bitboard Board::pieces(Color c) const {
+    Bitboard occ = 0;
+    for (int pt = 0; pt < PIECE_TYPE_NB; ++pt)
+        occ |= bb_[c][pt];
+    return occ;
+}
