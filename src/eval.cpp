@@ -3,9 +3,9 @@
 #include <algorithm>
 
 // Material values and phase weights
-static constexpr int MG_VALUE[PIECE_TYPE_NB] = {  82, 337, 365, 477, 1025, 0 };
-static constexpr int EG_VALUE[PIECE_TYPE_NB] = {  94, 281, 297, 512,  936, 0 };
-static constexpr int PHASE_WEIGHT[PIECE_TYPE_NB] = { 0, 1, 1, 2, 4, 0 };
+static constexpr int MG_VALUE[PIECE_TYPE_NB] = {82, 337, 365, 477, 1025, 0};
+static constexpr int EG_VALUE[PIECE_TYPE_NB] = {94, 281, 297, 512,  936, 0};
+static constexpr int PHASE_WEIGHT[PIECE_TYPE_NB] = {0, 1, 1, 2, 4, 0};
 static constexpr int MAX_PHASE = 24;
 
 // Piece-Square Tables
@@ -183,20 +183,23 @@ static int pawnStructure(const Board& board) {
 
 int Eval::evaluate(const Board& board) {
     int mgScore = 0, egScore = 0, phase = 0;
-    for (int color = WHITE; color <= BLACK; ++color) {
+    for (int color = WHITE; color <= BLACK; ++color)
+    {
         const int sign = (color == WHITE) ? 1 : -1;
-        for (int pt = PAWN; pt < PIECE_TYPE_NB; ++pt) {
+        for (int pt = PAWN; pt < PIECE_TYPE_NB; ++pt)
+        {
             Bitboard bb = board.pieces(static_cast<Color>(color), static_cast<PieceType>(pt));
             while (bb) {
                 const int square = BitboardUtils::popLsb(bb);
-                const int pastSquare = (color == WHITE) ? (square ^ 56) : square;
-                mgScore += sign * (MG_VALUE[pt] + MG_PST[pt][pastSquare]);
-                egScore += sign * (EG_VALUE[pt] + EG_PST[pt][pastSquare]);
+                const int pstSquare = (color == WHITE) ? (square ^ 56) : square;
+                mgScore += sign * (MG_VALUE[pt] + MG_PST[pt][pstSquare]);
+                egScore += sign * (EG_VALUE[pt] + EG_PST[pt][pstSquare]);
                 phase += PHASE_WEIGHT[pt];
             }
         }
     }
     phase = std::min(phase, MAX_PHASE);
-    const int score = (mgScore * phase + egScore * (MAX_PHASE - phase)) / MAX_PHASE + pawnStructure(board);
+    const int score = (mgScore * phase + egScore * (MAX_PHASE - phase)) / MAX_PHASE
+                + pawnStructure(board) * (MAX_PHASE + (MAX_PHASE - phase)) / (2 * MAX_PHASE);
     return (board.sideToMove() == WHITE) ? score : -score;
 }

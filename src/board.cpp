@@ -145,23 +145,23 @@ bool Board::canCastle(CastlingRights rights) const {
 }
 
 uint64_t Board::computeHash() const {
-    uint64_t h = 0;
+    uint64_t hash = 0;
 
     for (int sq = 0; sq < SQUARE_NB; ++sq) {
-        Piece p = board_[sq];
-        if (p != NO_PIECE)
-            h ^= Zobrist::piece[colorOf(p)][typeOf(p)][sq];
+        Piece piece = board_[sq];
+        if (piece != NO_PIECE)
+            hash ^= Zobrist::piece[colorOf(piece)][typeOf(piece)][sq];
     }
 
     if (whiteToMove_)
-        h ^= Zobrist::sideToMove;
+        hash ^= Zobrist::sideToMove;
 
-    h ^= Zobrist::castling[castlingRights_];
+    hash ^= Zobrist::castling[castlingRights_];
 
     if (enPassantSquare_ != SQ_NONE)
-        h ^= Zobrist::enPassant[enPassantSquare_ % 8];
+        hash ^= Zobrist::enPassant[enPassantSquare_ % 8];
 
-    return h;
+    return hash;
 }
 
 void Board::putPiece(Square sq, Piece p) {
@@ -170,9 +170,9 @@ void Board::putPiece(Square sq, Piece p) {
 }
 
 void Board::removePiece(Square sq) {
-    Piece p = board_[sq];
+    Piece piece = board_[sq];
     board_[sq] = NO_PIECE;
-    BitboardUtils::clearBit(bb_[colorOf(p)][typeOf(p)], sq);
+    BitboardUtils::clearBit(bb_[colorOf(piece)][typeOf(piece)], sq);
 }
 
 // Precompute a mask for which castling rights are lost when a piece moves from or to each square
@@ -237,7 +237,7 @@ void Board::makeMove(Move move) {
     if (typeOf(moving) == PAWN && (to - from == 16 || from - to == 16))
         enPassantSquare_ = static_cast<Square>((from + to) / 2);
     
-    //Update locks
+    //Update clocks
     halfmoveClock_ = (typeOf(moving) == PAWN || captured != NO_PIECE) ? 0 : halfmoveClock_ + 1;
     if (!whiteToMove_) ++fullmoveNumber_;
 

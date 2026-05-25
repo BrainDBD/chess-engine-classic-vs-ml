@@ -49,7 +49,7 @@ static void generatePawnMoves(const Board& board, Color us, std::vector<Move>& m
 
     // En passant captures
     if (enPassantSquare != SQ_NONE) {
-        Bitboard enPassantCaptures = Attacks::pawn[~us][enPassantSquare] & pawns;
+        Bitboard enPassantCaptures = Attacks::pawnAttacks[~us][enPassantSquare] & pawns;
         while (enPassantCaptures) {
             Square from = static_cast<Square>(popLsb(enPassantCaptures));
             moves.push_back(Move(from, enPassantSquare, EN_PASSANT));
@@ -65,11 +65,11 @@ static void generatePieceMoves(const Board& board, Color us, PieceType pt, std::
         Square from = static_cast<Square>(popLsb(pieces));
         Bitboard attacks;
         switch (pt) {
-            case KNIGHT: attacks = Attacks::knight[from]; break;
-            case BISHOP: attacks = Attacks::bishop(from, occupied); break;
-            case ROOK:   attacks = Attacks::rook(from, occupied); break;
-            case QUEEN:  attacks = Attacks::queen(from, occupied); break;
-            case KING:   attacks = Attacks::king[from]; break;
+            case KNIGHT: attacks = Attacks::knightAttacks[from]; break;
+            case BISHOP: attacks = Attacks::bishopAttacks(from, occupied); break;
+            case ROOK:   attacks = Attacks::rookAttacks(from, occupied); break;
+            case QUEEN:  attacks = Attacks::queenAttacks(from, occupied); break;
+            case KING:   attacks = Attacks::kingAttacks[from]; break;
             default: attacks = 0; break;
         }
         attacks &= ~friendlyPieces; // can't capture own pieces
@@ -82,18 +82,24 @@ static void generatePieceMoves(const Board& board, Color us, PieceType pt, std::
 
 static bool isSquareAttacked(const Board& board, Square sq, Color by) {
     const Bitboard occ = board.occupancy();
-    if (Attacks::pawn[~by][sq]   & board.pieces(by, PAWN))                              return true;
-    if (Attacks::knight[sq]      & board.pieces(by, KNIGHT))                            return true;
-    if (Attacks::king[sq]        & board.pieces(by, KING))                              return true;
-    if (Attacks::bishop(sq, occ) & (board.pieces(by, BISHOP) | board.pieces(by, QUEEN))) return true;
-    if (Attacks::rook(sq, occ)   & (board.pieces(by, ROOK)   | board.pieces(by, QUEEN))) return true;
+    if (Attacks::pawnAttacks[~by][sq] & board.pieces(by, PAWN))
+        return true;
+    if (Attacks::knightAttacks[sq] & board.pieces(by, KNIGHT))
+        return true;
+    if (Attacks::kingAttacks[sq] & board.pieces(by, KING))
+        return true;
+    if (Attacks::bishopAttacks(sq, occ) & (board.pieces(by, BISHOP) | board.pieces(by, QUEEN)))
+        return true;
+    if (Attacks::rookAttacks(sq, occ) & (board.pieces(by, ROOK) | board.pieces(by, QUEEN)))
+        return true;
+
     return false;
 }
 
 static void generateCastling(const Board& board, Color us, std::vector<Move>& moves) {
-    const int    rights = board.castlingRights();
+    const int rights = board.castlingRights();
     const Bitboard occ  = board.occupancy();
-    const Color  them   = ~us;
+    const Color them   = ~us;
 
     if (us == WHITE) {
         if ((rights & WHITE_OO)  && !(occ & 0x60ULL)
@@ -124,9 +130,9 @@ namespace MoveGen {
         generatePawnMoves (board, us, moves);
         generatePieceMoves(board, us, KNIGHT, moves);
         generatePieceMoves(board, us, BISHOP, moves);
-        generatePieceMoves(board, us, ROOK,   moves);
-        generatePieceMoves(board, us, QUEEN,  moves);
-        generatePieceMoves(board, us, KING,   moves);
+        generatePieceMoves(board, us, ROOK, moves);
+        generatePieceMoves(board, us, QUEEN, moves);
+        generatePieceMoves(board, us, KING, moves);
         generateCastling  (board, us, moves);
     }
 

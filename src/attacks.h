@@ -3,13 +3,13 @@
 #include "types.h"
 
 namespace Attacks {
-    extern Bitboard knight[SQUARE_NB];
-    extern Bitboard king[SQUARE_NB];
-    extern Bitboard pawn[COLOR_NB][SQUARE_NB];
+    extern Bitboard knightAttacks[SQUARE_NB];
+    extern Bitboard kingAttacks[SQUARE_NB];
+    extern Bitboard pawnAttacks[COLOR_NB][SQUARE_NB];
 
     void init();
 
-    Bitboard bishop(Square sq, Bitboard occupancy);
-    Bitboard rook(Square sq, Bitboard occupancy);
-    Bitboard queen(Square sq, Bitboard occupancy);
+    Bitboard bishopAttacks(Square sq, Bitboard occupancy);
+    Bitboard rookAttacks(Square sq, Bitboard occupancy);
+    Bitboard queenAttacks(Square sq, Bitboard occupancy);
 }
