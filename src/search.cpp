@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <vector>
 #include <chrono>
+#include <cstring>
 
 static constexpr int INF = 1'000'000;
 static constexpr int MATE_SCORE = 900'000;
@@ -12,6 +13,8 @@ static constexpr int MATE_THRESHOLD = MATE_SCORE - 500; // anything above this i
 std::atomic<bool> Search::stop = false;
 
 static TranspositionTable TT;
+static Move killerMoves[64][2]; // two killer moves per ply
+static int history[SQUARE_NB][SQUARE_NB]; // [from][to] history heuristic scores
 
 using Clock = std::chrono::steady_clock;
 using Ms = std::chrono::milliseconds;
@@ -28,7 +31,7 @@ static int allocateTime(const Search::Limits& limit, Color sideToMove) {
     return remainingTime / movesToGo + int(increment * 0.8);
 }
 
-static void orderMoves(std::vector<Move>& moves, const Board& board, Move ttMove) {
+static void orderMoves(std::vector<Move>& moves, const Board& board, Move ttMove, int ply) {
     auto score = [&](const Move move) -> int {
         if (move.data == ttMove.data) return 20'000; // search PV first
         if (move.isPromotion()) return 10'000 + static_cast<int>(move.promotionType());
@@ -40,7 +43,9 @@ static void orderMoves(std::vector<Move>& moves, const Board& board, Move ttMove
             return 5'000 + TAKEN_VALUE[typeOf(takenPiece)] - TAKER_VALUE[typeOf(board.pieceAt(move.from()))];
         }
 
-        return 0; // quiet moves last
+        if (move.data == killerMoves[ply][0].data) return 4'000;
+        if (move.data == killerMoves[ply][1].data) return 3'000;
+        return history[move.from()][move.to()];
     };
 
     std::sort(moves.begin(), moves.end(), [&](Move a, Move b) {
@@ -57,7 +62,7 @@ static int quiescence(Board& board, int alpha, int beta) {
     MoveGen::generateLegalMoves(board, moves);
     // Keep captures and promotions
     moves.erase(std::remove_if(moves.begin(), moves.end(), [&](const Move m) {return board.pieceAt(m.to()) == NO_PIECE && !m.isPromotion() && !m.isEnPassant();}), moves.end());
-    orderMoves(moves, board, Move::none());
+    orderMoves(moves, board, Move::none(), 0);
 
     for (const Move move : moves) {
         board.makeMove(move);
@@ -82,7 +87,11 @@ static int scoreFromTT(int score, int ply) {
     return score;
 }
 
-void Search::clearTT() { TT.clear(); }
+void Search::clearTT() {
+    TT.clear();
+    std::memset(killerMoves, 0, sizeof(killerMoves));
+    std::memset(history, 0, sizeof(history));
+}
 
 static uint64_t nodesSearched = 0;
 
@@ -120,7 +129,7 @@ static int negamax(Board& board, int depth, int ply, int alpha, int beta, Move& 
         return 0;              // stalemate
     }
 
-    orderMoves(moves, board, ttMove);
+    orderMoves(moves, board, ttMove, ply);
 
     const int originalAlpha = alpha;
     Move localBestMove = Move::none();
@@ -129,7 +138,16 @@ static int negamax(Board& board, int depth, int ply, int alpha, int beta, Move& 
         const int score = -negamax(board, depth - 1, ply + 1, -beta, -alpha, localBestMove);
         board.undoMove(move);
 
-        if (score >= beta) return beta; // beta cutoff - opponent won't allow this
+        if (score >= beta) { // Only quiet moves teach us something useful; captures are already ordered by MVV-LVA
+            if (board.pieceAt(move.to()) == NO_PIECE && !move.isEnPassant()) {
+                if (move.data != killerMoves[ply][0].data) {
+                    killerMoves[ply][1] = killerMoves[ply][0];
+                    killerMoves[ply][0] = move;
+                }
+                history[move.from()][move.to()] += depth * depth; // reward deeper cutoffs more
+            }
+            return beta;
+        }
         if (score > alpha) {
             alpha = score;
             localBestMove = move;
@@ -149,6 +167,8 @@ Search::SearchResult Search::search(Board& board, const Limits& limits) {
     nodesSearched = 0;
     searchStartTime = Clock::now();
     timeLimitMs = allocateTime(limits, board.sideToMove());
+    std::memset(killerMoves, 0, sizeof(killerMoves));
+    std::memset(history, 0, sizeof(history));
 
     SearchResult result{Move::none(), 0, 0};
     int maxDepth = (limits.depth < 64) ? limits.depth : 64;
