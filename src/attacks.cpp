@@ -7,98 +7,96 @@ namespace Attacks
     static constexpr Bitboard NOT_AB_FILE = 0xfcfcfcfcfcfcfcfcULL;
     static constexpr Bitboard NOT_GH_FILE = 0x3f3f3f3f3f3f3f3fULL;
 
-    Bitboard knight[SQUARE_NB];
-    Bitboard king[SQUARE_NB];
-    Bitboard pawn[COLOR_NB][SQUARE_NB];
+    Bitboard knightAttacks[SQUARE_NB];
+    Bitboard kingAttacks[SQUARE_NB];
+    Bitboard pawnAttacks[COLOR_NB][SQUARE_NB];
 
     void init()
     {
         for (int sq = 0; sq < SQUARE_NB; ++sq)
         {
 
-            Bitboard b = 1ULL << sq;
+            Bitboard board = 1ULL << sq;
 
-            knight[sq] = ((b & NOT_H_FILE) << 17) | ((b & NOT_A_FILE) << 15) | ((b & NOT_GH_FILE) << 10) | ((b & NOT_AB_FILE) << 6) | ((b & NOT_GH_FILE) >> 6) | ((b & NOT_AB_FILE) >> 10) | ((b & NOT_H_FILE) >> 15) | ((b & NOT_A_FILE) >> 17);
-
-            king[sq] = ((b & NOT_H_FILE) << 9) | ((b & NOT_A_FILE) << 7) | (b << 8) | ((b & NOT_H_FILE) << 1) | ((b & NOT_A_FILE) >> 1) | ((b & NOT_A_FILE) >> 9) | ((b & NOT_H_FILE) >> 7) | (b >> 8);
-
-            pawn[WHITE][sq] = ((b & NOT_H_FILE) << 9) | ((b & NOT_A_FILE) << 7);
-            pawn[BLACK][sq] = ((b & NOT_A_FILE) >> 9) | ((b & NOT_H_FILE) >> 7);
+            knightAttacks[sq] = ((board & NOT_H_FILE) << 17) | ((board & NOT_A_FILE) << 15) | ((board & NOT_GH_FILE) << 10) | ((board & NOT_AB_FILE) << 6) | ((board & NOT_GH_FILE) >> 6) | ((board & NOT_AB_FILE) >> 10) | ((board & NOT_H_FILE) >> 15) | ((board & NOT_A_FILE) >> 17);
+            kingAttacks[sq] = ((board & NOT_H_FILE) << 9) | ((board & NOT_A_FILE) << 7) | (board << 8) | ((board & NOT_H_FILE) << 1) | ((board & NOT_A_FILE) >> 1) | ((board & NOT_A_FILE) >> 9) | ((board & NOT_H_FILE) >> 7) | (board >> 8);
+            pawnAttacks[WHITE][sq] = ((board & NOT_H_FILE) << 9) | ((board & NOT_A_FILE) << 7);
+            pawnAttacks[BLACK][sq] = ((board & NOT_A_FILE) >> 9) | ((board & NOT_H_FILE) >> 7);
         }
     }
 
-    Bitboard bishop(Square sq, Bitboard occ)
+    Bitboard bishopAttacks(Square sq, Bitboard occ)
     {
         Bitboard attacks = 0;
-        int r = sq / 8, f = sq % 8;
-        for (int rr = r + 1, ff = f + 1; rr < 8 && ff < 8; ++rr, ++ff)
+        int rank = sq / 8, file = sq % 8;
+        for (int toRank = rank + 1, toFile = file + 1; toRank < 8 && toFile < 8; ++toRank, ++toFile)
         {
-            int s = rr * 8 + ff;
-            attacks |= 1ULL << s;
-            if (occ & (1ULL << s))
+            int toSq = toRank * 8 + toFile;
+            attacks |= 1ULL << toSq;
+            if (occ & (1ULL << toSq))
                 break;
         }
-        for (int rr = r + 1, ff = f - 1; rr < 8 && ff >= 0; ++rr, --ff)
+        for (int toRank = rank + 1, toFile = file - 1; toRank < 8 && toFile >= 0; ++toRank, --toFile)
         {
-            int s = rr * 8 + ff;
-            attacks |= 1ULL << s;
-            if (occ & (1ULL << s))
+            int toSq = toRank * 8 + toFile;
+            attacks |= 1ULL << toSq;
+            if (occ & (1ULL << toSq))
                 break;
         }
-        for (int rr = r - 1, ff = f + 1; rr >= 0 && ff < 8; --rr, ++ff)
+        for (int toRank = rank - 1, toFile = file + 1; toRank >= 0 && toFile < 8; --toRank, ++toFile)
         {
-            int s = rr * 8 + ff;
-            attacks |= 1ULL << s;
-            if (occ & (1ULL << s))
+            int toSq = toRank * 8 + toFile;
+            attacks |= 1ULL << toSq;
+            if (occ & (1ULL << toSq))
                 break;
         }
-        for (int rr = r - 1, ff = f - 1; rr >= 0 && ff >= 0; --rr, --ff)
+        for (int toRank = rank - 1, toFile = file - 1; toRank >= 0 && toFile >= 0; --toRank, --toFile)
         {
-            int s = rr * 8 + ff;
-            attacks |= 1ULL << s;
-            if (occ & (1ULL << s))
+            int toSq = toRank * 8 + toFile;
+            attacks |= 1ULL << toSq;
+            if (occ & (1ULL << toSq))
                 break;
         }
         return attacks;
     }
 
-    Bitboard rook(Square sq, Bitboard occ)
+    Bitboard rookAttacks(Square sq, Bitboard occ)
     {
         Bitboard attacks = 0;
-        int r = sq / 8, f = sq % 8;
-        for (int rr = r + 1; rr < 8; ++rr)
+        int rank = sq / 8, file = sq % 8;
+        for (int toRank = rank + 1; toRank < 8; ++toRank)
         {
-            int s = rr * 8 + f;
-            attacks |= 1ULL << s;
-            if (occ & (1ULL << s))
+            int toSq = toRank * 8 + file;
+            attacks |= 1ULL << toSq;
+            if (occ & (1ULL << toSq))
                 break;
         }
-        for (int rr = r - 1; rr >= 0; --rr)
+        for (int toRank = rank - 1; toRank >= 0; --toRank)
         {
-            int s = rr * 8 + f;
-            attacks |= 1ULL << s;
-            if (occ & (1ULL << s))
+            int toSq = toRank * 8 + file;
+            attacks |= 1ULL << toSq;
+            if (occ & (1ULL << toSq))
                 break;
         }
-        for (int ff = f + 1; ff < 8; ++ff)
+        for (int toFile = file + 1; toFile < 8; ++toFile)
         {
-            int s = r * 8 + ff;
-            attacks |= 1ULL << s;
-            if (occ & (1ULL << s))
+            int toSq = rank * 8 + toFile;
+            attacks |= 1ULL << toSq;
+            if (occ & (1ULL << toSq))
                 break;
         }
-        for (int ff = f - 1; ff >= 0; --ff)
+        for (int toFile = file - 1; toFile >= 0; --toFile)
         {
-            int s = r * 8 + ff;
-            attacks |= 1ULL << s;
-            if (occ & (1ULL << s))
+            int toSq = rank * 8 + toFile;
+            attacks |= 1ULL << toSq;
+            if (occ & (1ULL << toSq))
                 break;
         }
         return attacks;
     }
 
-    Bitboard queen(Square sq, Bitboard occ)
+    Bitboard queenAttacks(Square sq, Bitboard occ)
     {
-        return bishop(sq, occ) | rook(sq, occ);
+        return bishopAttacks(sq, occ) | rookAttacks(sq, occ);
     }
 } // namespace Attacks

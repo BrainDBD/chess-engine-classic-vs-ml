@@ -1,0 +1,123 @@
+#include "uci.h"
+#include "board.h"
+#include "movegen.h"
+#include "search.h"
+#include "attacks.h"
+#include "zobrist.h"
+#include <iostream>
+#include <sstream>
+#include <string>
+#include <thread>
+
+static constexpr auto START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+
+static Move parseMove(Board& board, const std::string& s) {
+    Square from = Square((s[1] - '1') * 8 + (s[0] - 'a'));
+    Square to = Square((s[3] - '1') * 8 + (s[2] - 'a'));
+    PieceType promo = QUEEN;
+    if (s.size() == 5) {
+        switch (s[4]) {
+            case 'r': promo = ROOK; break;
+            case 'b': promo = BISHOP; break;
+            case 'n': promo = KNIGHT; break;
+            default: promo = QUEEN; break;
+        }
+    }
+    std::vector<Move> moves;
+    MoveGen::generateLegalMoves(board, moves);
+    for (Move move : moves) {
+        if (move.from() == from && move.to() == to)
+            if (!move.isPromotion() || move.promotionType() == promo)
+                return move;
+    }
+    return Move::none();
+}
+
+static std::string moveToUCI(Move move) {
+    std::string s;
+    s+= char('a' + move.from() % 8);
+    s+= char('1' + move.from() / 8);
+    s+= char('a' + move.to() % 8);
+    s+= char('1' + move.to() / 8);
+    if (move.isPromotion()) {
+        const char possiblePromotions[] = {'q', 'r', 'b', 'n'};
+        s += possiblePromotions[move.promotionType() - KNIGHT];
+    }
+    return s;
+}
+
+static void parsePosition(Board& board, std::istringstream& iss) {
+    std::string token;
+    iss >> token;
+    if (token == "startpos") {
+        board.loadFEN(START_FEN);
+        iss >> token;// consume "moves" if present
+    } else if (token == "fen") {
+        std::string fen, part;
+        while (iss >> part && part != "moves")
+            fen += part + " ";
+        board.loadFEN(fen);
+        token = "moves"; //already consumed if present
+    }
+    if (token ==  "moves") {
+        while (iss >> token) {
+            board.makeMove(parseMove(board, token));
+        }
+    }
+}
+
+static void parseGo(Board& board, std::istringstream& iss) {
+    Search::Limits limits;
+    std::string token;
+    while (iss >> token) {
+        if (token == "wtime")     iss >> limits.wtime;
+        else if (token == "btime") iss >> limits.btime;
+        else if (token == "winc")  iss >> limits.winc;
+        else if (token == "binc")  iss >> limits.binc;
+        else if (token == "movestogo") iss >> limits.movestogo;
+        else if (token == "movetime")  iss >> limits.movetime;
+        else if (token == "depth")     iss >> limits.depth;
+        else if (token == "infinite")  limits.infinite = true;
+    }
+
+    // Run the search in a separate thread to avoid blocking the UCI loop
+    std::thread([board, limits]() mutable {
+        Search::SearchResult result = Search::search(board, limits);
+        std::cout << "bestmove " << moveToUCI(result.bestMove) << std::endl;
+        std::cout.flush();
+    }).detach();
+}
+
+void UCI::loop() {
+    Zobrist::init();
+    Attacks::init();
+    Board gameBoard;
+    gameBoard.loadFEN(START_FEN);
+
+    std::string line, token;
+    while (std::getline(std::cin, line)) {
+        std::istringstream iss(line);
+        iss >> token;
+        if (token == "uci") {
+            std::cout   << "id name ChessEngine\n"
+                        << "id author BrainDBD\n"
+                        << "uciok\n";
+        } else if (token == "isready") {
+            std::cout << "readyok\n";
+        } else if (token == "ucinewgame") {
+            gameBoard.loadFEN(START_FEN);
+            Search::clearTT();
+        } else if (token == "position") {
+            parsePosition(gameBoard, iss);
+        } else if (token == "go") {
+            Search::stop = false; // arm the search
+            parseGo(gameBoard, iss);
+        } else if (token == "stop") {
+            Search::stop = true;
+        } else if (token == "quit") {
+            Search::stop = true;
+            break;
+        }
+        std::cout.flush();
+    }
+}

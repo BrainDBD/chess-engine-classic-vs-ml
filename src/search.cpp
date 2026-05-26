@@ -4,11 +4,29 @@
 #include "transposition.h"
 #include <algorithm>
 #include <vector>
+#include <chrono>
 
-static TranspositionTable TT;
 static constexpr int INF = 1'000'000;
 static constexpr int MATE_SCORE = 900'000;
 static constexpr int MATE_THRESHOLD = MATE_SCORE - 500; // anything above this is considered a Mate score
+std::atomic<bool> Search::stop = false;
+
+static TranspositionTable TT;
+
+using Clock = std::chrono::steady_clock;
+using Ms = std::chrono::milliseconds;
+static Clock::time_point searchStartTime;
+static int timeLimitMs = 0;
+
+static int allocateTime(const Search::Limits& limit, Color sideToMove) {
+    if (limit.infinite || limit.depth < 64) return 0; // no clock pressure
+    if (limit.movetime > 0) return limit.movetime - 20; //20ms safety buffer
+
+    int remainingTime = (sideToMove == WHITE) ? limit.wtime : limit.btime;
+    int increment = (sideToMove == WHITE) ? limit.winc : limit.binc;
+    int movesToGo = (limit.movestogo > 0) ? limit.movestogo : 20; // assume 20 moves to next time control if unknown
+    return remainingTime / movesToGo + int(increment * 0.8);
+}
 
 static void orderMoves(std::vector<Move>& moves, const Board& board, Move ttMove) {
     auto score = [&](const Move move) -> int {
@@ -64,7 +82,22 @@ static int scoreFromTT(int score, int ply) {
     return score;
 }
 
+void Search::clearTT() { TT.clear(); }
+
+static uint64_t nodesSearched = 0;
+
+static bool shouldStop() {
+    if (Search::stop.load(std::memory_order_relaxed)) return true;
+    if (timeLimitMs > 0 && nodesSearched % 4096 == 0) { // check time ever 4096 nodes
+        auto elapsed = std::chrono::duration_cast<Ms>(Clock::now() - searchStartTime).count();
+        if (elapsed >= timeLimitMs) return true;
+    }
+    return false;
+}
 static int negamax(Board& board, int depth, int ply, int alpha, int beta, Move& bestMove) {
+    ++nodesSearched;
+    if (shouldStop()) return 0;
+
     if (depth == 0) return quiescence(board, alpha, beta);
 
     Move ttMove = Move::none();
@@ -112,17 +145,34 @@ static int negamax(Board& board, int depth, int ply, int alpha, int beta, Move& 
     return alpha;
 }
 
-Search::SearchResult Search::search(Board& board, int maxDepth) {
+Search::SearchResult Search::search(Board& board, const Limits& limits) {
+    nodesSearched = 0;
+    searchStartTime = Clock::now();
+    timeLimitMs = allocateTime(limits, board.sideToMove());
+
     SearchResult result{Move::none(), 0, 0};
+    int maxDepth = (limits.depth < 64) ? limits.depth : 64;
     
-    for (int depth = 1; depth <= maxDepth; ++depth) {
+    for (int depth = 1; depth <= maxDepth && !stop; ++depth) {
         Move bestMove = Move::none();
         const int score = negamax(board, depth, 0, -INF, INF, bestMove);
+
+        if(stop && bestMove.isNone()) break; // if stopped and no move found, return last result instead of "best move none"
+        
         if(!bestMove.isNone()) {
             result.bestMove = bestMove;
             result.score = score;
             result.depth = depth;
         }
+
+        auto elapsed = std::chrono::duration_cast<Ms>(Clock::now() - searchStartTime).count();
+        std::cout << "info depth " << depth
+                << " score cp " << score
+                << " nodes " << nodesSearched
+                << " time " << elapsed
+                << std::endl;
+        std::cout.flush();
+        if (timeLimitMs > 0 && elapsed >= timeLimitMs / 2) break; // stop deepening if not enough time left
     }
     return result;
 }
