@@ -197,9 +197,14 @@ int Eval::evaluate(const Board& board) {
                 phase += PHASE_WEIGHT[pt];
             }
         }
+        if (BitboardUtils::countBits(board.pieces(static_cast<Color>(color), BISHOP)) >= 2) {
+            // Bishop pair bonus
+            mgScore += sign * 30;
+            egScore += sign * 50;
+        }
     }
     phase = std::min(phase, MAX_PHASE);
     const int score = (mgScore * phase + egScore * (MAX_PHASE - phase)) / MAX_PHASE
-                + pawnStructure(board) * (MAX_PHASE + (MAX_PHASE - phase)) / (2 * MAX_PHASE);
+                + pawnStructure(board);
     return (board.sideToMove() == WHITE) ? score : -score;
 }

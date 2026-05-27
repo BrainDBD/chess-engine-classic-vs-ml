@@ -23,9 +23,10 @@ static int timeLimitMs = 0;
 
 static int allocateTime(const Search::Limits& limit, Color sideToMove) {
     if (limit.infinite || limit.depth < 64) return 0; // no clock pressure
-    if (limit.movetime > 0) return limit.movetime - 20; //20ms safety buffer
+    if (limit.movetime > 0) return std::max(1, limit.movetime - 20); //20ms safety buffer
 
     int remainingTime = (sideToMove == WHITE) ? limit.wtime : limit.btime;
+    if (remainingTime <= 0) return 50; // emergency fallback: 50ms
     int increment = (sideToMove == WHITE) ? limit.winc : limit.binc;
     int movesToGo = (limit.movestogo > 0) ? limit.movestogo : 20; // assume 20 moves to next time control if unknown
     return remainingTime / movesToGo + int(increment * 0.8);
@@ -135,17 +136,19 @@ static int negamax(Board& board, int depth, int ply, int alpha, int beta, Move& 
     Move localBestMove = Move::none();
     for (const Move move : moves) {
         board.makeMove(move);
-        const int score = -negamax(board, depth - 1, ply + 1, -beta, -alpha, localBestMove);
+        Move childBestMove = Move::none();
+        const int score = -negamax(board, depth - 1, ply + 1, -beta, -alpha, childBestMove);
         board.undoMove(move);
 
         if (score >= beta) { // Only quiet moves teach us something useful; captures are already ordered by MVV-LVA
-            if (board.pieceAt(move.to()) == NO_PIECE && !move.isEnPassant()) {
+            if (!Search::stop && board.pieceAt(move.to()) == NO_PIECE && !move.isEnPassant()) {
                 if (move.data != killerMoves[ply][0].data) {
                     killerMoves[ply][1] = killerMoves[ply][0];
                     killerMoves[ply][0] = move;
                 }
                 history[move.from()][move.to()] += depth * depth; // reward deeper cutoffs more
             }
+            TT.store(board.hash(), scoreToTT(beta, ply), move, depth, TT_LOWER);
             return beta;
         }
         if (score > alpha) {
@@ -154,10 +157,7 @@ static int negamax(Board& board, int depth, int ply, int alpha, int beta, Move& 
         }
     }
 
-    TTFlag flag;
-    if (alpha <= originalAlpha) flag = TT_UPPER; // no move improved alpha
-    else if (alpha >= beta) flag = TT_LOWER; // move caused beta cutoff
-    else flag = TT_EXACT; // exact score
+    const TTFlag flag = (alpha > originalAlpha) ? TT_EXACT : TT_UPPER;
     TT.store(board.hash(), scoreToTT(alpha, ply), localBestMove, depth, flag);
     bestMove = localBestMove;
     return alpha;
