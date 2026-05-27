@@ -10,12 +10,13 @@
 static constexpr int INF = 1'000'000;
 static constexpr int MATE_SCORE = 900'000;
 static constexpr int MATE_THRESHOLD = MATE_SCORE - 500; // anything above this is considered a Mate score
-std::atomic<bool> Search::stop = false;
+static constexpr int DELTA_MARGIN = 200; // one pawn + buffer
 
 static TranspositionTable TT;
 static Move killerMoves[64][2]; // two killer moves per ply
 static int history[SQUARE_NB][SQUARE_NB]; // [from][to] history heuristic scores
 
+std::atomic<bool> Search::stop = false;
 using Clock = std::chrono::steady_clock;
 using Ms = std::chrono::milliseconds;
 static Clock::time_point searchStartTime;
@@ -32,9 +33,11 @@ static int allocateTime(const Search::Limits& limit, Color sideToMove) {
     return remainingTime / movesToGo + int(increment * 0.8);
 }
 
+static uint64_t nodesSearched = 0;
+
 static bool shouldStop() {
     if (Search::stop.load(std::memory_order_relaxed)) return true;
-    if (timeLimitMs > 0) {
+    if (timeLimitMs > 0 && (nodesSearched & 4095) == 0) {
         auto elapsed = std::chrono::duration_cast<Ms>(Clock::now() - searchStartTime).count();
         if (elapsed >= timeLimitMs) {
             Search::stop = true;
@@ -70,6 +73,7 @@ static int quiescence(Board& board, int alpha, int beta) {
     if (shouldStop()) return 0;
     const int standPat = Eval::evaluate(board);
     if (standPat >= beta) return beta;
+    if (standPat + DELTA_MARGIN < alpha) return alpha; // delta pruning
     if (standPat > alpha) alpha = standPat;
 
     std::vector<Move> moves;
@@ -107,8 +111,6 @@ void Search::clearTT() {
     std::memset(history, 0, sizeof(history));
 }
 
-static uint64_t nodesSearched = 0;
-
 static int negamax(Board& board, int depth, int ply, int alpha, int beta, Move& bestMove) {
     ++nodesSearched;
     if (shouldStop()) return 0;
@@ -123,7 +125,11 @@ static int negamax(Board& board, int depth, int ply, int alpha, int beta, Move& 
         if (entry->flag == TT_LOWER && ttScore >= beta) return ttScore;
         if (entry->flag == TT_UPPER && ttScore <= alpha) return ttScore;
     }
-    if (entry) ttMove = entry->move;
+    if (entry) {
+        ttMove = entry->move;
+        if(!ttMove.isNone() && board.pieceAt((ttMove.from())) == NO_PIECE)
+            ttMove = Move::none(); // invalid TT move (e.g. from a position where the best move was a capture, but now it's not)
+    }
 
     std::vector<Move> moves;
     MoveGen::generateLegalMoves(board, moves);
@@ -179,6 +185,9 @@ Search::SearchResult Search::search(Board& board, const Limits& limits) {
     int maxDepth = (limits.depth < 64) ? limits.depth : 64;
     
     for (int depth = 1; depth <= maxDepth && !stop; ++depth) {
+        for (auto& row : history)
+                for (auto& h : row)
+                    h >>= 2; // age history scores to avoid overvaluing old information
         Move bestMove = Move::none();
         const int score = negamax(board, depth, 0, -INF, INF, bestMove);
 
