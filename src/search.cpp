@@ -32,6 +32,18 @@ static int allocateTime(const Search::Limits& limit, Color sideToMove) {
     return remainingTime / movesToGo + int(increment * 0.8);
 }
 
+static bool shouldStop() {
+    if (Search::stop.load(std::memory_order_relaxed)) return true;
+    if (timeLimitMs > 0) {
+        auto elapsed = std::chrono::duration_cast<Ms>(Clock::now() - searchStartTime).count();
+        if (elapsed >= timeLimitMs) {
+            Search::stop = true;
+            return true;
+        }
+    }
+    return false;
+}
+
 static void orderMoves(std::vector<Move>& moves, const Board& board, Move ttMove, int ply) {
     auto score = [&](const Move move) -> int {
         if (move.data == ttMove.data) return 20'000; // search PV first
@@ -55,6 +67,7 @@ static void orderMoves(std::vector<Move>& moves, const Board& board, Move ttMove
 };
 
 static int quiescence(Board& board, int alpha, int beta) {
+    if (shouldStop()) return 0;
     const int standPat = Eval::evaluate(board);
     if (standPat >= beta) return beta;
     if (standPat > alpha) alpha = standPat;
@@ -96,14 +109,6 @@ void Search::clearTT() {
 
 static uint64_t nodesSearched = 0;
 
-static bool shouldStop() {
-    if (Search::stop.load(std::memory_order_relaxed)) return true;
-    if (timeLimitMs > 0 && nodesSearched % 4096 == 0) { // check time ever 4096 nodes
-        auto elapsed = std::chrono::duration_cast<Ms>(Clock::now() - searchStartTime).count();
-        if (elapsed >= timeLimitMs) return true;
-    }
-    return false;
-}
 static int negamax(Board& board, int depth, int ply, int alpha, int beta, Move& bestMove) {
     ++nodesSearched;
     if (shouldStop()) return 0;
