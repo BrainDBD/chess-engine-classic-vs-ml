@@ -38,7 +38,8 @@ class Board {
         Color sideToMove() const { return whiteToMove_ ? WHITE : BLACK; }
         void makeMove(Move move);
         void undoMove(Move move);
-        bool canCastle(CastlingRights rights) const;
+        void makeNullMove();
+        void undoNullMove();
 
         Bitboard pieces(Color c, PieceType pt) const { return bb_[c][pt]; }
         Bitboard pieces(Color c) const;
@@ -46,8 +47,10 @@ class Board {
         Bitboard occupancy() const { return pieces(WHITE) | pieces(BLACK); }
         Square enpassantSquare() const { return enPassantSquare_; }
         int castlingRights() const { return castlingRights_; }
-    
-    private:
+        bool canCastle(CastlingRights rights) const;
+        int halfmoveClock() const { return halfmoveClock_; }
+        
+        private:
         uint64_t computeHash() const;
         void putPiece(Square sq, Piece p);
         void removePiece(Square sq);

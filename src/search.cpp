@@ -111,7 +111,7 @@ void Search::clearTT() {
     std::memset(history, 0, sizeof(history));
 }
 
-static int negamax(Board& board, int depth, int ply, int alpha, int beta, Move& bestMove) {
+static int negamax(Board& board, int depth, int ply, int alpha, int beta, Move& bestMove, bool allowNull = true) {
     ++nodesSearched;
     if (shouldStop()) return 0;
 
@@ -131,12 +131,34 @@ static int negamax(Board& board, int depth, int ply, int alpha, int beta, Move& 
             ttMove = Move::none(); // invalid TT move (e.g. from a position where the best move was a capture, but now it's not)
     }
 
+    const bool inCheck = MoveGen::isInCheck(board, board.sideToMove());
+
+    //Null move pruning
+    if (allowNull && !inCheck && depth >= 3 && ply > 0) {
+        const bool hasNonPawns = (
+            board.pieces(board.sideToMove(), KNIGHT) |
+            board.pieces(board.sideToMove(), BISHOP) |
+            board.pieces(board.sideToMove(), ROOK) |
+            board.pieces(board.sideToMove(), QUEEN) != 0
+        );
+
+        if (hasNonPawns) {
+            const int R = 2 + depth / 4; // reduction based on depth
+            board.makeNullMove();
+            Move dummyMove = Move::none();
+            const int nullScore = -negamax(board, depth - R - 1, ply + 1, -beta, -beta + 1, dummyMove, false);
+            board.undoNullMove();
+            if (!shouldStop() && nullScore >= beta)
+                return beta; // fail-hard beta cutoff
+        }
+    }
+
     std::vector<Move> moves;
     MoveGen::generateLegalMoves(board, moves);
     
     if (moves.empty()) {
         // No legal moves: checkmate or stalemate
-        if (MoveGen::isInCheck(board, board.sideToMove()))
+        if (inCheck)
             return -(MATE_SCORE - ply);  // prefer shorter mates
         return 0;              // stalemate
     }

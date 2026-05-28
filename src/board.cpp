@@ -286,6 +286,28 @@ void Board::undoMove(Move move) {
     history_.pop_back();
 }
 
+void Board::makeNullMove() {
+    history_.push_back({NO_PIECE, enPassantSquare_, castlingRights_, halfmoveClock_, hash_});
+
+    if (enPassantSquare_ != SQ_NONE)
+        hash_ ^= Zobrist::enPassant[enPassantSquare_ % 8];
+    hash_ ^= Zobrist::sideToMove;
+
+    enPassantSquare_ = SQ_NONE;
+    whiteToMove_ = !whiteToMove_;
+    ++halfmoveClock_;
+}
+
+void Board::undoNullMove() {
+    const UndoInfo& info = history_.back();
+    enPassantSquare_ = info.enPassantSquare;
+    castlingRights_ = info.castlingRights;
+    halfmoveClock_ = info.halfmoveClock;
+    hash_ = info.hash;
+    whiteToMove_ = !whiteToMove_;
+    history_.pop_back();
+}
+
 Bitboard Board::pieces(Color c) const {
     Bitboard occ = 0;
     for (int pt = 0; pt < PIECE_TYPE_NB; ++pt)
