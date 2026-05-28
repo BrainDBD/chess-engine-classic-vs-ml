@@ -49,6 +49,7 @@ class Board {
         int castlingRights() const { return castlingRights_; }
         bool canCastle(CastlingRights rights) const;
         int halfmoveClock() const { return halfmoveClock_; }
+        bool isRepetition() const;
         
         private:
         uint64_t computeHash() const;

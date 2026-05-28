@@ -119,6 +119,8 @@ static int negamax(Board& board, int depth, int ply, int alpha, int beta, Move& 
     ++nodesSearched;
     if (shouldStop()) return 0;
     if (depth == 0) return quiescence(board, alpha, beta);
+    if (ply > 0 && board.isRepetition()) return 0; // draw by repetition
+    if (board.halfmoveClock() >= 100) return 0; // draw by 50-move rule
 
     Move ttMove = Move::none();
     const TTEntry* entry = TT.probe(board.hash());

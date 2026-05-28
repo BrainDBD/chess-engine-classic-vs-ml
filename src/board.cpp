@@ -314,3 +314,12 @@ Bitboard Board::pieces(Color c) const {
         occ |= bb_[c][pt];
     return occ;
 }
+
+bool Board::isRepetition() const {
+    const int size = static_cast<int>(history_.size());
+    const int limit = std::max(0, size - halfmoveClock_);
+    for (int i = size - 2; i >= limit; i -= 2)
+        if (history_[i].hash == hash_)
+            return true;
+    return false;
+}
