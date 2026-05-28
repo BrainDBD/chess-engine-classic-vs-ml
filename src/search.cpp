@@ -11,6 +11,7 @@ static constexpr int INF = 1'000'000;
 static constexpr int MATE_SCORE = 900'000;
 static constexpr int MATE_THRESHOLD = MATE_SCORE - 500; // anything above this is considered a Mate score
 static constexpr int DELTA_MARGIN = 200; // one pawn + buffer
+static constexpr int RFP_MARGIN   = 100; // per-depth step for reverse futility pruning
 
 static TranspositionTable TT;
 static Move killerMoves[64][2]; // two killer moves per ply
@@ -137,6 +138,13 @@ static int negamax(Board& board, int depth, int ply, int alpha, int beta, Move& 
     }
 
     const bool inCheck = MoveGen::isInCheck(board, board.sideToMove());
+
+    //Reverse futility pruning
+    if (depth <= 3 && !inCheck && ply > 0) {
+        const int staticEval = Eval::evaluate(board);
+        if (staticEval - RFP_MARGIN * depth >= beta)
+            return beta;
+    }
 
     //Null move pruning
     if (allowNull && !inCheck && depth >= 3 && ply > 0) {
