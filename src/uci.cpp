@@ -23,13 +23,12 @@ static Move parseMove(Board& board, const std::string& s) {
             default: promo = QUEEN; break;
         }
     }
-    std::vector<Move> moves;
-    MoveGen::generateLegalMoves(board, moves);
-    for (Move move : moves) {
-        if (move.from() == from && move.to() == to)
-            if (!move.isPromotion() || move.promotionType() == promo)
-                return move;
-    }
+    Move moves[256];
+    Move* end = MoveGen::generateLegalMoves(board, moves);
+    for (Move* move = moves; move != end; ++move)
+        if (move->from() == from && move->to() == to)
+            if (!move->isPromotion() || move->promotionType() == promo)
+                return *move;
     return Move::none();
 }
 

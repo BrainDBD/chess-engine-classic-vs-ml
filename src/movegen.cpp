@@ -10,7 +10,7 @@ static constexpr Bitboard RANK_8_BB = 0xFF00000000000000ULL;
 static constexpr Bitboard NOT_A_FILE = 0xFEFEFEFEFEFEFEFEULL;
 static constexpr Bitboard NOT_H_FILE = 0x7F7F7F7F7F7F7F7FULL;
 
-static void generatePawnMoves(const Board& board, Color us, std::vector<Move>& moves) {
+static Move* generatePawnMoves(const Board& board, Color us, Move* moves) {
     const Bitboard pawns = board.pieces(us, PAWN);
     const Bitboard empty = ~board.occupancy();
     const Bitboard enemies = board.pieces(~us);
@@ -30,14 +30,13 @@ static void generatePawnMoves(const Board& board, Color us, std::vector<Move>& m
             Square to = static_cast<Square>(popLsb(targets));
             Square from = static_cast<Square>(to - fromOffset);
             if ((1ULL << to) & promoteRank) {
-                moves.push_back(Move(from, to, PROMOTION, KNIGHT));
-                moves.push_back(Move(from, to, PROMOTION, BISHOP));
-                moves.push_back(Move(from, to, PROMOTION, ROOK));
-                moves.push_back(Move(from, to, PROMOTION, QUEEN));
+                *moves++ = Move(from, to, PROMOTION, KNIGHT);
+                *moves++ = Move(from, to, PROMOTION, BISHOP);
+                *moves++ = Move(from, to, PROMOTION, ROOK);
+                *moves++ = Move(from, to, PROMOTION, QUEEN);
             }
-            else {
-                moves.push_back(Move(from, to, flag));
-            }
+            else
+                *moves++ = Move(from, to, flag);
         }
     };
 
@@ -52,12 +51,13 @@ static void generatePawnMoves(const Board& board, Color us, std::vector<Move>& m
         Bitboard enPassantCaptures = Attacks::pawnAttacks[~us][enPassantSquare] & pawns;
         while (enPassantCaptures) {
             Square from = static_cast<Square>(popLsb(enPassantCaptures));
-            moves.push_back(Move(from, enPassantSquare, EN_PASSANT));
+            *moves++ = Move(from, enPassantSquare, EN_PASSANT);
         }
     }
+    return moves;
 }
 
-static void generatePieceMoves(const Board& board, Color us, PieceType pt, std::vector<Move>& moves) {
+static Move* generatePieceMoves(const Board& board, Color us, PieceType pt, Move* moves) {
     const Bitboard friendlyPieces = board.pieces(us);
     const Bitboard occupied = board.occupancy();
     Bitboard pieces = board.pieces(us, pt);
@@ -75,9 +75,10 @@ static void generatePieceMoves(const Board& board, Color us, PieceType pt, std::
         attacks &= ~friendlyPieces; // can't capture own pieces
         while (attacks) {
             Square to = static_cast<Square>(popLsb(attacks));
-            moves.push_back(Move(from, to));
+            *moves++ = Move(from, to);
         }
     }
+    return moves;
 }
 
 static bool isSquareAttacked(const Board& board, Square sq, Color by) {
@@ -96,7 +97,7 @@ static bool isSquareAttacked(const Board& board, Square sq, Color by) {
     return false;
 }
 
-static void generateCastling(const Board& board, Color us, std::vector<Move>& moves) {
+static Move* generateCastling(const Board& board, Color us, Move* moves) {
     const int rights = board.castlingRights();
     const Bitboard occ  = board.occupancy();
     const Color them   = ~us;
@@ -105,35 +106,37 @@ static void generateCastling(const Board& board, Color us, std::vector<Move>& mo
         if ((rights & WHITE_OO)  && !(occ & 0x60ULL)
             && !isSquareAttacked(board, SQ_E1, them)
             && !isSquareAttacked(board, SQ_F1, them))
-            moves.push_back(Move(SQ_E1, SQ_G1, CASTLING));
+            *moves++ = Move(SQ_E1, SQ_G1, CASTLING);
 
         if ((rights & WHITE_OOO) && !(occ & 0x0EULL)
             && !isSquareAttacked(board, SQ_E1, them)
             && !isSquareAttacked(board, SQ_D1, them))
-            moves.push_back(Move(SQ_E1, SQ_C1, CASTLING));
+            *moves++ = Move(SQ_E1, SQ_C1, CASTLING);
     } else {
         if ((rights & BLACK_OO)  && !(occ & 0x6000000000000000ULL)
             && !isSquareAttacked(board, SQ_E8, them)
             && !isSquareAttacked(board, SQ_F8, them))
-            moves.push_back(Move(SQ_E8, SQ_G8, CASTLING));
+            *moves++ = Move(SQ_E8, SQ_G8, CASTLING);
 
         if ((rights & BLACK_OOO) && !(occ & 0x0E00000000000000ULL)
             && !isSquareAttacked(board, SQ_E8, them)
             && !isSquareAttacked(board, SQ_D8, them))
-            moves.push_back(Move(SQ_E8, SQ_C8, CASTLING));
+            *moves++ = Move(SQ_E8, SQ_C8, CASTLING);
     }
+    return moves;
 }
 
 namespace MoveGen {
-    void generateMoves(const Board& board, std::vector<Move>& moves) {
+    Move* generateMoves(const Board& board, Move* moves) {
         const Color us = board.sideToMove();
-        generatePawnMoves (board, us, moves);
-        generatePieceMoves(board, us, KNIGHT, moves);
-        generatePieceMoves(board, us, BISHOP, moves);
-        generatePieceMoves(board, us, ROOK, moves);
-        generatePieceMoves(board, us, QUEEN, moves);
-        generatePieceMoves(board, us, KING, moves);
-        generateCastling  (board, us, moves);
+        moves = generatePawnMoves (board, us, moves);
+        moves = generatePieceMoves(board, us, KNIGHT, moves);
+        moves = generatePieceMoves(board, us, BISHOP, moves);
+        moves = generatePieceMoves(board, us, ROOK, moves);
+        moves = generatePieceMoves(board, us, QUEEN, moves);
+        moves = generatePieceMoves(board, us, KING, moves);
+        moves = generateCastling  (board, us, moves);
+        return moves;
     }
 
     bool isSquareAttacked(const Board& board, Square sq, Color by) {
@@ -145,15 +148,17 @@ namespace MoveGen {
         return ::isSquareAttacked(board, kingSq, ~c);
     }
 
-    void generateLegalMoves(Board& board, std::vector<Move>& moves) {
-        std::vector<Move> pseudoLegalMoves;
-        generateMoves(board, pseudoLegalMoves);
+    Move* generateLegalMoves(Board& board, Move* moves) {
+        Move pseudoLegalMoves[256];
+        Move* pseudoEnd = generateMoves(board, pseudoLegalMoves);
 
-        for (Move move : pseudoLegalMoves) {
-            board.makeMove(move);
+        Move* end = moves;
+        for (Move* it = pseudoLegalMoves; it !=pseudoEnd; ++it) {
+            board.makeMove(*it);
             if (!isInCheck(board, ~board.sideToMove()))
-                moves.push_back(move);
-            board.undoMove(move);
+                *end++ = *it;
+            board.undoMove(*it);
         }
+        return end;
     }
 }

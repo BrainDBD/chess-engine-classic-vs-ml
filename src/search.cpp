@@ -47,7 +47,7 @@ static bool shouldStop() {
     return false;
 }
 
-static void orderMoves(std::vector<Move>& moves, const Board& board, Move ttMove, int ply) {
+static void orderMoves(Move* moves, int count, const Board& board, Move ttMove, int ply) {
     auto score = [&](const Move move) -> int {
         if (move.data == ttMove.data) return 20'000; // search PV first
         if (move.isPromotion()) return 10'000 + static_cast<int>(move.promotionType());
@@ -64,7 +64,7 @@ static void orderMoves(std::vector<Move>& moves, const Board& board, Move ttMove
         return history[move.from()][move.to()];
     };
 
-    std::sort(moves.begin(), moves.end(), [&](Move a, Move b) {
+    std::sort(moves, moves + count, [&](Move a, Move b) {
         return score(a) > score(b);
     });
 };
@@ -76,16 +76,20 @@ static int quiescence(Board& board, int alpha, int beta) {
     if (standPat + DELTA_MARGIN < alpha) return alpha; // delta pruning
     if (standPat > alpha) alpha = standPat;
 
-    std::vector<Move> moves;
-    MoveGen::generateLegalMoves(board, moves);
+    Move moves[256];
+    Move* end = MoveGen::generateLegalMoves(board, moves);
     // Keep captures and promotions
-    moves.erase(std::remove_if(moves.begin(), moves.end(), [&](const Move m) {return board.pieceAt(m.to()) == NO_PIECE && !m.isPromotion() && !m.isEnPassant();}), moves.end());
-    orderMoves(moves, board, Move::none(), 0);
+    Move* captureEnd = moves;
+    for (Move* move = moves; move != end; ++move)
+        if (board.pieceAt(move->to()) != NO_PIECE || move->isPromotion() || move->isEnPassant())
+            *captureEnd++ = *move;
+    const int numCaptures = static_cast<int>(captureEnd - moves);
+    orderMoves(moves, numCaptures, board, Move::none(), 0);
 
-    for (const Move move : moves) {
-        board.makeMove(move);
+    for (int i = 0; i < numCaptures; ++i) {
+        board.makeMove(moves[i]);
         const int score = -quiescence(board, -beta, -alpha);
-        board.undoMove(move);
+        board.undoMove(moves[i]);
 
         if (score >= beta) return beta;
         if (score > alpha) alpha = score;
@@ -114,7 +118,6 @@ void Search::clearTT() {
 static int negamax(Board& board, int depth, int ply, int alpha, int beta, Move& bestMove, bool allowNull = true) {
     ++nodesSearched;
     if (shouldStop()) return 0;
-
     if (depth == 0) return quiescence(board, alpha, beta);
 
     Move ttMove = Move::none();
@@ -138,9 +141,9 @@ static int negamax(Board& board, int depth, int ply, int alpha, int beta, Move& 
         const bool hasNonPawns = (
             board.pieces(board.sideToMove(), KNIGHT) |
             board.pieces(board.sideToMove(), BISHOP) |
-            board.pieces(board.sideToMove(), ROOK) |
-            board.pieces(board.sideToMove(), QUEEN) != 0
-        );
+            board.pieces(board.sideToMove(), ROOK)   |
+            board.pieces(board.sideToMove(), QUEEN)
+        ) != 0;
 
         if (hasNonPawns) {
             const int R = 2 + depth / 4; // reduction based on depth
@@ -153,28 +156,36 @@ static int negamax(Board& board, int depth, int ply, int alpha, int beta, Move& 
         }
     }
 
-    std::vector<Move> moves;
-    MoveGen::generateLegalMoves(board, moves);
+    Move moves[256];
+    Move* end = MoveGen::generateLegalMoves(board, moves);
+    const int moveCount = static_cast<int>(end - moves);
     
-    if (moves.empty()) {
+    if (moveCount == 0) {
         // No legal moves: checkmate or stalemate
         if (inCheck)
             return -(MATE_SCORE - ply);  // prefer shorter mates
         return 0;              // stalemate
     }
 
-    orderMoves(moves, board, ttMove, ply);
+    orderMoves(moves, moveCount, board, ttMove, ply);
 
     const int originalAlpha = alpha;
     Move localBestMove = Move::none();
-    for (const Move move : moves) {
+    for (int i = 0; i < moveCount; ++i) {
+        const Move move = moves[i];
+        const bool isQuiet = board.pieceAt(move.to()) == NO_PIECE && !move.isEnPassant() && !move.isPromotion();
         board.makeMove(move);
         Move childBestMove = Move::none();
-        const int score = -negamax(board, depth - 1, ply + 1, -beta, -alpha, childBestMove);
+        const bool doLMR = depth >= 3 && i >= 4 && isQuiet && !inCheck; // late move reduction
+        const int searchDepth = doLMR ? depth - 2 : depth - 1;
+        
+        int score = -negamax(board, searchDepth, ply + 1, -beta, -alpha, childBestMove);
+        if (doLMR && score > alpha)
+            score = -negamax(board, depth - 1, ply + 1, -beta, -alpha, childBestMove); // re-search at full depth if LMR move is better than alpha
         board.undoMove(move);
 
         if (score >= beta) { // Only quiet moves teach us something useful; captures are already ordered by MVV-LVA
-            if (!Search::stop && board.pieceAt(move.to()) == NO_PIECE && !move.isEnPassant()) {
+            if (!Search::stop && isQuiet) {
                 if (move.data != killerMoves[ply][0].data) {
                     killerMoves[ply][1] = killerMoves[ply][0];
                     killerMoves[ply][0] = move;
