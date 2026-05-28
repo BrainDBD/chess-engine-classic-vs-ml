@@ -57,3 +57,5 @@ int main() {
     UCI::loop();
     return 0;
 }
+
+// how to run: mingw32-make, ./chess.exe

@@ -139,7 +139,7 @@ static int negamax(Board& board, int depth, int ply, int alpha, int beta, Move& 
     if (entry) {
         ttMove = entry->move;
         if(!ttMove.isNone() && board.pieceAt((ttMove.from())) == NO_PIECE)
-            ttMove = Move::none(); // invalid TT move (e.g. from a position where the best move was a capture, but now it's not)
+            ttMove = Move::none(); // hash collision — from-square is empty in this position
     }
 
     const bool inCheck = MoveGen::isInCheck(board, board.sideToMove());
@@ -195,7 +195,7 @@ static int negamax(Board& board, int depth, int ply, int alpha, int beta, Move& 
         const int searchDepth = doLMR ? depth - 2 : depth - 1;
         
         int score = -negamax(board, searchDepth, ply + 1, -beta, -alpha, childBestMove);
-        if (doLMR && score > alpha)
+        if (doLMR && score > alpha && score < beta)
             score = -negamax(board, depth - 1, ply + 1, -beta, -alpha, childBestMove); // re-search at full depth if LMR move is better than alpha
         board.undoMove(move);
 
