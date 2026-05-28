@@ -123,6 +123,11 @@ static int negamax(Board& board, int depth, int ply, int alpha, int beta, Move& 
     if (ply > 0 && board.isRepetition()) return 0; // draw by repetition
     if (board.halfmoveClock() >= 100) return 0; // draw by 50-move rule
 
+    //Mate distance pruning
+    alpha = std::max(alpha, -(MATE_SCORE - ply));
+    beta = std::min(beta, MATE_SCORE - ply - 1);
+    if (alpha >= beta) return alpha;
+
     Move ttMove = Move::none();
     const TTEntry* entry = TT.probe(board.hash());
     if (entry && entry->depth >= depth && ply > 0) {
