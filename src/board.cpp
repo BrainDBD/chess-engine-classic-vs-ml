@@ -281,6 +281,7 @@ void Board::undoMove(Move move) {
     castlingRights_ = info.castlingRights;
     enPassantSquare_ = info.enPassantSquare;
     halfmoveClock_ = info.halfmoveClock;
+    fullmoveNumber_ = (whiteToMove_ == BLACK) ? fullmoveNumber_ - 1 : fullmoveNumber_;
     hash_ = info.hash;
 
     history_.pop_back();
@@ -296,6 +297,7 @@ void Board::makeNullMove() {
     enPassantSquare_ = SQ_NONE;
     whiteToMove_ = !whiteToMove_;
     ++halfmoveClock_;
+    if (!whiteToMove_) ++fullmoveNumber_;
 }
 
 void Board::undoNullMove() {
@@ -305,6 +307,7 @@ void Board::undoNullMove() {
     halfmoveClock_ = info.halfmoveClock;
     hash_ = info.hash;
     whiteToMove_ = !whiteToMove_;
+    fullmoveNumber_ = (whiteToMove_ == BLACK) ? fullmoveNumber_ - 1 : fullmoveNumber_;
     history_.pop_back();
 }
 

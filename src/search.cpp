@@ -10,12 +10,13 @@
 static constexpr int INF = 1'000'000;
 static constexpr int MATE_SCORE = 900'000;
 static constexpr int MATE_THRESHOLD = MATE_SCORE - 500; // anything above this is considered a Mate score
-static constexpr int DELTA_MARGIN = 200; // one pawn + buffer
+static constexpr int DELTA_MARGIN = 900; // margin for delta pruning in quiescence search
 static constexpr int RFP_MARGIN   = 100; // per-depth step for reverse futility pruning
 
 static TranspositionTable TT;
 static Move killerMoves[64][2]; // two killer moves per ply
 static int history[SQUARE_NB][SQUARE_NB]; // [from][to] history heuristic scores
+static constexpr int HISTORY_MAX = 2048;
 
 std::atomic<bool> Search::stop = false;
 using Clock = std::chrono::steady_clock;
@@ -70,26 +71,40 @@ static void orderMoves(Move* moves, int count, const Board& board, Move ttMove, 
     });
 };
 
-static int quiescence(Board& board, int alpha, int beta) {
+static int quiescence(Board& board, int alpha, int beta, int ply) {
+    nodesSearched++;
     if (shouldStop()) return 0;
-    const int standPat = Eval::evaluate(board);
-    if (standPat >= beta) return beta;
-    if (standPat + DELTA_MARGIN < alpha) return alpha; // delta pruning
-    if (standPat > alpha) alpha = standPat;
+
+    const bool inCheck = MoveGen::isInCheck(board, board.sideToMove());
+    if (!inCheck) {
+        const int standPat = Eval::evaluate(board);
+        if (standPat >= beta) return beta;
+        if (standPat + DELTA_MARGIN < alpha) return alpha; // delta pruning
+        if (standPat > alpha) alpha = standPat;
+    }
 
     Move moves[256];
     Move* end = MoveGen::generateLegalMoves(board, moves);
     // Keep captures and promotions
-    Move* captureEnd = moves;
-    for (Move* move = moves; move != end; ++move)
-        if (board.pieceAt(move->to()) != NO_PIECE || move->isPromotion() || move->isEnPassant())
-            *captureEnd++ = *move;
-    const int numCaptures = static_cast<int>(captureEnd - moves);
-    orderMoves(moves, numCaptures, board, Move::none(), 0);
+    Move* searchEnd = end;
+    if (!inCheck) { // Out of check, only consider captures and promotions for quiescence search
+        Move* captureEnd = moves;
+        for (Move* move = moves; move != end; ++move)
+                if (board.pieceAt(move->to()) != NO_PIECE || move->isPromotion() || move->isEnPassant())
+                    *captureEnd++ = *move;
+        searchEnd = captureEnd;
+    }
+    const int numCaptures = static_cast<int>(searchEnd - moves);
+
+    if (inCheck && numCaptures == 0) {
+        // Checkmate found in quiescence search — return a large negative score adjusted for mate distance
+        return -(MATE_SCORE - ply);
+    }
+    orderMoves(moves, numCaptures, board, Move::none(), 0); // ply 0: avoids killer OOB
 
     for (int i = 0; i < numCaptures; ++i) {
         board.makeMove(moves[i]);
-        const int score = -quiescence(board, -beta, -alpha);
+        const int score = -quiescence(board, -beta, -alpha, ply + 1);
         board.undoMove(moves[i]);
 
         if (score >= beta) return beta;
@@ -117,9 +132,9 @@ void Search::clearTT() {
 }
 
 static int negamax(Board& board, int depth, int ply, int alpha, int beta, Move& bestMove, bool allowNull = true) {
+    if (depth == 0) return quiescence(board, alpha, beta, ply);
     ++nodesSearched;
     if (shouldStop()) return 0;
-    if (depth == 0) return quiescence(board, alpha, beta);
     if (ply > 0 && board.isRepetition()) return 0; // draw by repetition
     if (board.halfmoveClock() >= 100) return 0; // draw by 50-move rule
 
@@ -145,14 +160,14 @@ static int negamax(Board& board, int depth, int ply, int alpha, int beta, Move& 
     const bool inCheck = MoveGen::isInCheck(board, board.sideToMove());
 
     //Reverse futility pruning
-    if (depth <= 3 && !inCheck && ply > 0) {
+    if (depth <= 3 && !inCheck && ply > 0 && beta < MATE_THRESHOLD) {
         const int staticEval = Eval::evaluate(board);
         if (staticEval - RFP_MARGIN * depth >= beta)
             return beta;
     }
 
     //Null move pruning
-    if (allowNull && !inCheck && depth >= 3 && ply > 0) {
+    if (allowNull && !inCheck && depth >= 3 && ply > 0 && beta < MATE_THRESHOLD) {
         const bool hasNonPawns = (
             board.pieces(board.sideToMove(), KNIGHT) |
             board.pieces(board.sideToMove(), BISHOP) |
@@ -199,15 +214,21 @@ static int negamax(Board& board, int depth, int ply, int alpha, int beta, Move& 
             score = -negamax(board, depth - 1, ply + 1, -beta, -alpha, childBestMove); // re-search at full depth if LMR move is better than alpha
         board.undoMove(move);
 
+        if (shouldStop()) break; // move score is unreliable
+
         if (score >= beta) { // Only quiet moves teach us something useful; captures are already ordered by MVV-LVA
             if (!Search::stop && isQuiet) {
                 if (move.data != killerMoves[ply][0].data) {
                     killerMoves[ply][1] = killerMoves[ply][0];
                     killerMoves[ply][0] = move;
                 }
-                history[move.from()][move.to()] += depth * depth; // reward deeper cutoffs more
+                int bonus = std::min(depth * depth, HISTORY_MAX); // reward deeper cutoffs
+                int &historyScore = history[move.from()][move.to()];
+                historyScore += bonus - historyScore * bonus / HISTORY_MAX; // gravity: asymptotically bounded to ±HISTORY_MAX
             }
-            TT.store(board.hash(), scoreToTT(beta, ply), move, depth, TT_LOWER);
+            if(!Search::stop)
+                TT.store(board.hash(), scoreToTT(beta, ply), move, depth, TT_LOWER);
+            bestMove = move;
             return beta;
         }
         if (score > alpha) {
@@ -216,13 +237,16 @@ static int negamax(Board& board, int depth, int ply, int alpha, int beta, Move& 
         }
     }
 
-    const TTFlag flag = (alpha > originalAlpha) ? TT_EXACT : TT_UPPER;
-    TT.store(board.hash(), scoreToTT(alpha, ply), localBestMove, depth, flag);
+    if (!Search::stop) {
+        const TTFlag flag = (alpha > originalAlpha) ? TT_EXACT : TT_UPPER;
+        TT.store(board.hash(), scoreToTT(alpha, ply), localBestMove, depth, flag);
+    }
     bestMove = localBestMove;
     return alpha;
 }
 
 Search::SearchResult Search::search(Board& board, const Limits& limits) {
+    stop.store(false, std::memory_order_relaxed);
     nodesSearched = 0;
     searchStartTime = Clock::now();
     timeLimitMs = allocateTime(limits, board.sideToMove());
@@ -239,8 +263,11 @@ Search::SearchResult Search::search(Board& board, const Limits& limits) {
         Move bestMove = Move::none();
         const int score = negamax(board, depth, 0, -INF, INF, bestMove);
 
-        if(stop && bestMove.isNone()) break; // if stopped and no move found, return last result instead of "best move none"
-        
+        if(stop) { // if stopped and no move found, return last result instead of "best move none"
+            if (!bestMove.isNone()) result.bestMove = bestMove;
+            break;
+        }
+
         if(!bestMove.isNone()) {
             result.bestMove = bestMove;
             result.score = score;
