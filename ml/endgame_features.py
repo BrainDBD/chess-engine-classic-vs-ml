@@ -7,6 +7,9 @@ _PIECE_PHASE = {
 }
 MAX_PHASE = 24
 
+RESULT_TO_WDL = {"1-0": 1.0, "0-1": 0.0, "1/2-1/2": 0.5}
+
+
 def game_phase(board: chess.Board) -> int:
     phase = 0
     for pt, w in _PIECE_PHASE.items():
@@ -100,6 +103,28 @@ def _connected_passers(passers) -> int:
     return int(any(b - a == 1 for a, b in zip(files, files[1:])))
 
 
+def _rook_features(board: chess.Board, color: bool) -> dict:
+    # Rook features: on semi-open file (no own pawns), and distance to the most advanced enemy passer (if any). Both are important for rook activity in endgames.
+    f = {"rook_on_semiopen_file": 0, "rook_dist_enemy_passer": 0}
+    rooks = list(board.pieces(chess.ROOK, color))
+    if not rooks:
+        return f
+    own_pawn_files = {chess.square_file(p) for p in board.pieces(chess.PAWN, color)}
+    for r in rooks:
+        if chess.square_file(r) not in own_pawn_files:
+            f["rook_on_semiopen_file"] = 1
+            break
+    enemy_passers = passed_pawns(board, not color)
+    if enemy_passers:
+        if (not color) == chess.WHITE:
+            adv_enemy = max(enemy_passers, key=chess.square_rank)
+        else:
+            adv_enemy = min(enemy_passers, key=chess.square_rank)
+        f["rook_dist_enemy_passer"] = min(
+            chess.square_distance(r, adv_enemy) for r in rooks)
+    return f
+
+
 def _side_features(board: chess.Board, color: bool) -> dict:
     f = {}
     f["pawns"] = len(board.pieces(chess.PAWN, color))
@@ -125,6 +150,10 @@ def _side_features(board: chess.Board, color: bool) -> dict:
     passers = passed_pawns(board, color)
     f["passed_count"] = len(passers)
     f["connected_passers"] = _connected_passers(passers)
+
+    rf = _rook_features(board, color)
+    f["rook_on_semiopen_file"] = rf["rook_on_semiopen_file"]
+    f["rook_dist_enemy_passer"] = rf["rook_dist_enemy_passer"]
 
     if not passers:
         f["pawn_steps"] = 0
@@ -162,6 +191,7 @@ _SIDE_KEYS = ("pawns", "knights", "bishops", "rooks", "queens",
             "king_edge_dist", "bishop_color",
             "king_dist_own_pawn",
             "doubled", "isolated", "passed_count", "connected_passers",
+            "rook_on_semiopen_file", "rook_dist_enemy_passer",
             "pawn_steps", "own_king_dist_promo", "enemy_king_dist_promo",
             "enemy_king_outside_square")
 
