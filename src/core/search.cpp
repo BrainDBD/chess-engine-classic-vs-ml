@@ -207,9 +207,11 @@ static int negamax(Board& board, int depth, int ply, int alpha, int beta, Move& 
         const Move move = moves[i];
         const bool isQuiet = board.pieceAt(move.to()) == NO_PIECE && !move.isEnPassant() && !move.isPromotion();
         board.makeMove(move);
+        const bool givesCheck = MoveGen::isInCheck(board, board.sideToMove());
+        const int extension = givesCheck ? 1 : 0; // check extension
         Move childBestMove = Move::none();
-        const bool doLMR = depth >= 3 && i >= 4 && isQuiet && !inCheck; // late move reduction
-        const int searchDepth = doLMR ? depth - 2 : depth - 1;
+        const bool doLMR = depth >= 3 && i >= 4 && isQuiet && !inCheck && !givesCheck; // late move reduction
+        const int searchDepth = doLMR ? depth - 2 : depth - 1 + extension;
         
         int score = -negamax(board, searchDepth, ply + 1, -beta, -alpha, childBestMove);
         if (doLMR && score > alpha && score < beta)
