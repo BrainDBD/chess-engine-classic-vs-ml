@@ -41,7 +41,7 @@ def main():
     ap.add_argument("--norm", required=True, help="the .norm.json (feature order)")
     ap.add_argument(
         "--out",
-        default=str(Path(__file__).resolve().parents[1] / "src" / "endgame_net_weights.h"),
+        default=str(Path(__file__).resolve().parents[1] / "src" / "net" / "endgame_net_weights.h"),
     )
     cfg = ap.parse_args()
 

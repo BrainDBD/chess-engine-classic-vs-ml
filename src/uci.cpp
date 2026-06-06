@@ -5,6 +5,7 @@
 #include "attacks.h"
 #include "zobrist.h"
 #include "endgame_mode.h"
+#include "syzygy.h"
 #include <iostream>
 #include <sstream>
 #include <string>
@@ -101,7 +102,8 @@ void UCI::loop() {
         if (token == "uci") {
             std::cout   << "id name ChessEngine\n"
                         << "id author BrainDBD\n"
-                        << "option name EndgameMode type combo default Classic var Classic var MLP var Syzygy\n"
+                        << "option name EndgameMode type combo default Classic var Classic var MLPBlend var MLPReplace var Syzygy\n"
+                        << "option name SyzygyPath type string default <empty>\n"
                         << "uciok\n";
         } else if (token == "isready") {
             std::cout << "readyok\n";
@@ -111,16 +113,29 @@ void UCI::loop() {
         } else if (token == "position") {
             parsePosition(gameBoard, iss);
         } else if (token == "setoption") {
-            std::string name, value;
-            iss >> token;                 // "name"
-            iss >> name;                  // "EndgameMode"
-            iss >> token;                 // "value"
-            iss >> value;                 // "MLP"
+            std::string name, kw;
+            iss >> kw;                    // "name"
+            iss >> name;                  // option name
+            iss >> kw;                    // "value"
+            std::string value;
+            std::getline(iss, value);     // remainder of line (may be empty)
+            if (!value.empty() && value.front() == ' ') value.erase(0, 1);
+
             if (name == "EndgameMode") {
-                if      (value == "MLP")    Endgame::g_mode = Endgame::Mode::MLP;
-                else if (value == "Syzygy") Endgame::g_mode = Endgame::Mode::Syzygy;
-                else                        Endgame::g_mode = Endgame::Mode::Classic;
+                if      (value == "MLPReplace") Endgame::g_mode = Endgame::Mode::MLPReplace;
+                else if (value == "MLPBlend")   Endgame::g_mode = Endgame::Mode::MLPBlend;
+                else if (value == "Syzygy")     Endgame::g_mode = Endgame::Mode::Syzygy;
+                else                            Endgame::g_mode = Endgame::Mode::Classic;
                 Search::clearTT();        // scores from the old mode are now invalid
+            } else if (name == "SyzygyPath") {
+                if (!value.empty() && value != "<empty>") {
+                    if (Syzygy::init(value.c_str()))
+                        std::cout << "info string Syzygy: loaded, max "
+                                << Syzygy::maxPieces() << " pieces" << std::endl;
+                    else
+                        std::cout << "info string Syzygy: FAILED to load from "
+                                << value << std::endl;
+                }
             }
         } else if (token == "go") {
             Search::stop = false; // arm the search

@@ -1,11 +1,12 @@
 **/__pycache__/
-ml/3-4-5-dtz/
-ml/3-4-5-wdl/
-ml/6-dtz/
-ml/6-wdl/
+tablebases
 *.pgn
 *.jsonl
 *.pt
 ml/filter_balanced.py
 ml/strip_dataset.py
 ml/exported
+.vscode
+tests
+ml/make_disagree.py
+ml/make_startpos.py
