@@ -4,6 +4,7 @@
 #include "search.h"
 #include "attacks.h"
 #include "zobrist.h"
+#include "endgame_mode.h"
 #include <iostream>
 #include <sstream>
 #include <string>
@@ -100,6 +101,7 @@ void UCI::loop() {
         if (token == "uci") {
             std::cout   << "id name ChessEngine\n"
                         << "id author BrainDBD\n"
+                        << "option name EndgameMode type combo default Classic var Classic var MLP var Syzygy\n"
                         << "uciok\n";
         } else if (token == "isready") {
             std::cout << "readyok\n";
@@ -108,6 +110,18 @@ void UCI::loop() {
             Search::clearTT();
         } else if (token == "position") {
             parsePosition(gameBoard, iss);
+        } else if (token == "setoption") {
+            std::string name, value;
+            iss >> token;                 // "name"
+            iss >> name;                  // "EndgameMode"
+            iss >> token;                 // "value"
+            iss >> value;                 // "MLP"
+            if (name == "EndgameMode") {
+                if      (value == "MLP")    Endgame::g_mode = Endgame::Mode::MLP;
+                else if (value == "Syzygy") Endgame::g_mode = Endgame::Mode::Syzygy;
+                else                        Endgame::g_mode = Endgame::Mode::Classic;
+                Search::clearTT();        // scores from the old mode are now invalid
+            }
         } else if (token == "go") {
             Search::stop = false; // arm the search
             parseGo(gameBoard, iss);
