@@ -10,8 +10,10 @@
 static constexpr int INF = 1'000'000;
 static constexpr int MATE_SCORE = 900'000;
 static constexpr int MATE_THRESHOLD = MATE_SCORE - 500; // anything above this is considered a Mate score
-static constexpr int DELTA_MARGIN = 900; // margin for delta pruning in quiescence search
-static constexpr int RFP_MARGIN   = 100; // per-depth step for reverse futility pruning
+static constexpr int QUIESCENCE_DELTA_MARGIN = 900; // margin for delta pruning in quiescence search
+static constexpr int RFP_MARGIN = 100; // per-depth step for reverse futility pruning
+static constexpr int ASPIRATION_DELTA = 25; // initial aspiration window size in centipawns
+static constexpr int ASPIRATION_MIN_DEPTH = 4; // minimum depth to apply aspiration search
 
 static TranspositionTable TT;
 static Move killerMoves[64][2]; // two killer moves per ply
@@ -79,7 +81,7 @@ static int quiescence(Board& board, int alpha, int beta, int ply) {
     if (!inCheck) {
         const int standPat = Eval::evaluate(board);
         if (standPat >= beta) return beta;
-        if (standPat + DELTA_MARGIN < alpha) return alpha; // delta pruning
+        if (standPat + QUIESCENCE_DELTA_MARGIN < alpha) return alpha; // delta pruning
         if (standPat > alpha) alpha = standPat;
     }
 
@@ -260,8 +262,39 @@ Search::SearchResult Search::search(Board& board, const Limits& limits) {
         for (auto& row : history)
                 for (auto& h : row)
                     h >>= 2; // age history scores to avoid overvaluing old information
+        
+        int delta = ASPIRATION_DELTA;
+        int alpha, beta;
+
+        if (depth >= ASPIRATION_MIN_DEPTH && std::abs(result.score) < MATE_THRESHOLD) {
+            alpha = std::max(result.score - delta, -MATE_SCORE);
+            beta = std::min(result.score + delta, MATE_SCORE);
+        } else {
+            alpha = -INF;
+            beta = INF;
+        }
+
         Move bestMove = Move::none();
-        const int score = negamax(board, depth, 0, -INF, INF, bestMove);
+        int score = 0;
+
+        while (true) { // aspiration search loop
+            score = negamax(board, depth, 0, alpha, beta, bestMove);
+            if(shouldStop()) break;
+
+            if (score <= alpha) {
+                alpha = std::max(alpha - delta, -INF); // widen window downwards
+                delta += delta;
+                bestMove = Move::none();
+            } else if (score >= beta) {
+                beta = std::min(beta + delta, INF); // widen window upwards
+                delta += delta;
+                bestMove = Move::none();
+            } else break;
+            if (delta >= INF / 4) { // collapse to full window
+                alpha = -INF;
+                beta = INF;
+            }
+        }
 
         if(stop) { // if stopped and no move found, return last result instead of "best move none"
             if (!bestMove.isNone()) result.bestMove = bestMove;
