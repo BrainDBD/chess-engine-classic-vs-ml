@@ -28,13 +28,13 @@ namespace EndgameNet {
         for (int j = 0; j < EG_NET_H1; ++j) {
             float s = EG_B1[j];
             for (int i = 0; i < EG_NET_IN; ++i) s += EG_W1[j][i] * x[i];
-            h1[j] = s > 0.f ? s : 0.f;
+            h1[j] = std::max(0.0f, s); // ReLU activation
         }
         float h2[EG_NET_H2];
         for (int j = 0; j < EG_NET_H2; ++j) {
             float s = EG_B2[j];
             for (int i = 0; i < EG_NET_H1; ++i) s += EG_W2[j][i] * h1[i];
-            h2[j] = s > 0.f ? s : 0.f;
+            h2[j] = std::max(0.0f, s);
         }
         float s = EG_B3;
         for (int i = 0; i < EG_NET_H2; ++i) s += EG_W3[i] * h2[i];
