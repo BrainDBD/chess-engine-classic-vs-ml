@@ -12,7 +12,12 @@
 #include <thread>
 
 static constexpr auto START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
-
+static constexpr const char* SYZYGY_PATH =
+    "C:/Users/light/OneDrive/Documents/Schoolwork/tablebases/3-4-5-wdl;"
+    "C:/Users/light/OneDrive/Documents/Schoolwork/tablebases/6-wdl;"
+    "C:/Users/light/OneDrive/Documents/Schoolwork/tablebases/3-4-5-dtz;"
+    "C:/Users/light/OneDrive/Documents/Schoolwork/tablebases/6-dtz";
+    
 static Move parseMove(Board& board, const std::string& s) {
     Square from = Square((s[1] - '1') * 8 + (s[0] - 'a'));
     Square to = Square((s[3] - '1') * 8 + (s[2] - 'a'));
@@ -124,17 +129,23 @@ void UCI::loop() {
             if (name == "EndgameMode") {
                 if      (value == "MLPReplace") Endgame::g_mode = Endgame::Mode::MLPReplace;
                 else if (value == "MLPBlend")   Endgame::g_mode = Endgame::Mode::MLPBlend;
-                else if (value == "Syzygy")     Endgame::g_mode = Endgame::Mode::Syzygy;
+                else if (value == "Syzygy") {
+                    Endgame::g_mode = Endgame::Mode::Syzygy;
+                    // If tables were not loaded via SyzygyPath yet, fall back to the compiled-in default path (convenient for manual testing).
+                    if (!Syzygy::isReady()) {
+                        bool ok = Syzygy::init(SYZYGY_PATH);
+                        std::cout << "info string Syzygy init " << (ok ? "OK" : "FAILED")
+                                << " max=" << Syzygy::maxPieces() << std::endl;
+                    }
+                }
                 else                            Endgame::g_mode = Endgame::Mode::Classic;
                 Search::clearTT();        // scores from the old mode are now invalid
             } else if (name == "SyzygyPath") {
+                // path supplied by the GUI / fastchess. Loads WDL+DTZ dirs.
                 if (!value.empty() && value != "<empty>") {
-                    if (Syzygy::init(value.c_str()))
-                        std::cout << "info string Syzygy: loaded, max "
-                                << Syzygy::maxPieces() << " pieces" << std::endl;
-                    else
-                        std::cout << "info string Syzygy: FAILED to load from "
-                                << value << std::endl;
+                    bool ok = Syzygy::init(value.c_str());
+                    std::cout << "info string Syzygy init " << (ok ? "OK" : "FAILED")
+                            << " max=" << Syzygy::maxPieces() << std::endl;
                 }
             }
         } else if (token == "go") {

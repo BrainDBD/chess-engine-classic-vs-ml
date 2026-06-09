@@ -2,6 +2,8 @@
 #include "eval.h"
 #include "movegen.h"
 #include "transposition.h"
+#include "syzygy.h"
+#include "endgame_mode.h"
 #include <algorithm>
 #include <vector>
 #include <chrono>
@@ -10,6 +12,7 @@
 static constexpr int INF = 1'000'000;
 static constexpr int MATE_SCORE = 900'000;
 static constexpr int MATE_THRESHOLD = MATE_SCORE - 500; // anything above this is considered a Mate score
+static constexpr int TB_WIN_SCORE = MATE_SCORE - 1000; // Syzygy tablebase win
 static constexpr int QUIESCENCE_DELTA_MARGIN = 900; // margin for delta pruning in quiescence search
 static constexpr int RFP_MARGIN = 100; // per-depth step for reverse futility pruning
 static constexpr int ASPIRATION_DELTA = 25; // initial aspiration window size in centipawns
@@ -140,6 +143,15 @@ static int negamax(Board& board, int depth, int ply, int alpha, int beta, Move& 
     if (ply > 0 && board.isRepetition()) return 0; // draw by repetition
     if (board.halfmoveClock() >= 100) return 0; // draw by 50-move rule
 
+    if (Endgame::g_mode == Endgame::Mode::Syzygy && ply > 0 && board.castlingRights() == 0 && BitboardUtils::countBits(board.occupancy()) <= Syzygy::maxPieces()) {
+        int wdl;
+        if (Syzygy::probeWDL(board, wdl)) {
+            if (wdl > 0) return  (TB_WIN_SCORE - ply); // prefer shorter wins
+            if (wdl < 0) return -(TB_WIN_SCORE - ply); // prefer longer losses
+            return 0;                                   // draw (incl. cursed/blessed)
+        }
+    }
+
     //Mate distance pruning
     alpha = std::max(alpha, -(MATE_SCORE - ply));
     beta = std::min(beta, MATE_SCORE - ply - 1);
@@ -211,7 +223,7 @@ static int negamax(Board& board, int depth, int ply, int alpha, int beta, Move& 
         const int extension = givesCheck ? 1 : 0; // check extension
         Move childBestMove = Move::none();
         const bool doLMR = depth >= 3 && i >= 4 && isQuiet && !inCheck && !givesCheck; // late move reduction
-        const int searchDepth = doLMR ? depth - 2 : depth - 1 + extension;
+        const int searchDepth = (doLMR ? depth - 2 : depth - 1) + extension;
         
         int score = -negamax(board, searchDepth, ply + 1, -beta, -alpha, childBestMove);
         if (doLMR && score > alpha && score < beta)
@@ -256,6 +268,16 @@ Search::SearchResult Search::search(Board& board, const Limits& limits) {
     timeLimitMs = allocateTime(limits, board.sideToMove());
     std::memset(killerMoves, 0, sizeof(killerMoves));
     std::memset(history, 0, sizeof(history));
+
+    if (Endgame::g_mode == Endgame::Mode::Syzygy) {
+        Syzygy::RootProbeResult rp;
+        if (Syzygy::probeRoot(board, rp) && rp.ok && !rp.move.isNone()) {
+            std::cout << "info depth 1 score cp " << rp.score
+                    << " nodes 1 time 0" << std::endl;
+            std::cout.flush();
+            return SearchResult{rp.move, rp.score, 1};
+        }
+    }
 
     SearchResult result{Move::none(), 0, 0};
     int maxDepth = (limits.depth < 64) ? limits.depth : 64;

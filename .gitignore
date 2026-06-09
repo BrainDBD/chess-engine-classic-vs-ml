@@ -10,3 +10,5 @@ ml/exported
 tests
 ml/make_disagree.py
 ml/make_startpos.py
+*.o
+*.exe

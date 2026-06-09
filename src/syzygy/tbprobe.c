@@ -33,7 +33,7 @@ SOFTWARE.
 #include <stdlib.h>
 #include <string.h>
 #ifdef TB_NO_STDBOOL
-#typedef uint8 bool
+typedef uint8_t bool;
 #else
 #include <stdbool.h>
 #endif
