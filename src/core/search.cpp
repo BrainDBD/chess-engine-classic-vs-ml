@@ -145,7 +145,8 @@ void Search::clearTT() {
 static int negamax(Board& board, int depth, int ply, int alpha, int beta, Move& bestMove, bool allowNull = true) {
     if (ply > 0 && board.isRepetition()) return 0; // draw by repetition
     if (board.halfmoveClock() >= 100) return 0; // draw by 50-move rule
-
+    ++nodesSearched;
+    if (shouldStop()) return 0;
     // In-search endgame verdict given by real Syzygy probing or MLP approximation
     if (ply > 0) {
         const int pieces = BitboardUtils::countBits(board.occupancy());
@@ -166,8 +167,6 @@ static int negamax(Board& board, int depth, int ply, int alpha, int beta, Move& 
     }
 
     if (depth == 0 || ply >= MAX_PLY - 1) return quiescence(board, alpha, beta, ply);
-    ++nodesSearched;
-    if (shouldStop()) return 0;
 
     //Mate distance pruning
     alpha = std::max(alpha, -(MATE_SCORE - ply));
