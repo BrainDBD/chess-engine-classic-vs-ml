@@ -6,6 +6,8 @@
 #include "zobrist.h"
 #include "endgame_mode.h"
 #include "syzygy.h"
+#include "endgame_net_features.h"
+#include "endgame_net.h"            // for the wdltest debug command
 #include <iostream>
 #include <sstream>
 #include <string>
@@ -46,8 +48,13 @@ static std::string moveToUCI(Move move) {
     s+= char('a' + move.to() % 8);
     s+= char('1' + move.to() / 8);
     if (move.isPromotion()) {
-        const char possiblePromotions[] = {'q', 'r', 'b', 'n'};
-        s += possiblePromotions[move.promotionType() - KNIGHT];
+        switch (move.promotionType()) {
+            case KNIGHT: s += 'n'; break;
+            case BISHOP: s += 'b'; break;
+            case ROOK:   s += 'r'; break;
+            case QUEEN:  s += 'q'; break;
+            default:     s += 'q'; break;
+        }
     }
     return s;
 }
@@ -161,6 +168,19 @@ void UCI::loop() {
             parseGo(gameBoard, iss);
         } else if (token == "stop") {
             Search::stop = true;
+        // } else if (token == "wdltest") {
+        //     // Debug: print the ordinal net's verdict for the current position,
+        //     // for offline parity checking against the Python model. Not part of
+        //     // UCI; safe to leave in (or #ifdef out for release).
+        //     float feat[EG_NET_IN];
+        //     EndgameFeatures<Board>::extract(gameBoard, feat);
+        //     float o[2];
+        //     EndgameNet::forward(feat, o);
+        //     int v = EndgameNet::wdlVerdict(gameBoard);
+        //     const char* nm = (v > 0 ? "win" : v < 0 ? "loss" : "draw");
+        //     std::cout << "wdltest p_draw=" << o[0] << " p_win=" << o[1]
+        //               << " verdict=" << nm << "\n";
+        //     std::cout.flush();
         } else if (token == "quit") {
             Search::stop = true;
             break;

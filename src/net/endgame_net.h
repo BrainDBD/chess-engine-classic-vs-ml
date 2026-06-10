@@ -47,6 +47,18 @@ namespace EndgameNet {
         int passed = (o[0] > T_DRAW ? 1 : 0) + (o[1] > T_WIN ? 1 : 0); // 0,1,2
         return passed - 1;                                            // -1,0,+1
     }
+
+    inline bool canProbe(const Board& board) {
+        if (board.castlingRights() != 0)
+            return false;
+        if (BitboardUtils::countBits(board.occupancy()) > MAX_PIECES)
+            return false;
+        if (BitboardUtils::countBits(board.pieces(WHITE, KING)) != 1)
+            return false;
+        if (BitboardUtils::countBits(board.pieces(BLACK, KING)) != 1)
+            return false;
+        return true;
+    }
 }
 
 // Endgame net: CORAL ordinal head over geometry features.

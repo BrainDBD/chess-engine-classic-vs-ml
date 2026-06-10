@@ -19,8 +19,9 @@ static constexpr int RFP_MARGIN = 100; // per-depth step for reverse futility pr
 static constexpr int ASPIRATION_DELTA = 25; // initial aspiration window size in centipawns
 static constexpr int ASPIRATION_MIN_DEPTH = 4; // minimum depth to apply aspiration search
 
+static constexpr int MAX_PLY = 256;
 static TranspositionTable TT;
-static Move killerMoves[64][2]; // two killer moves per ply
+static Move killerMoves[MAX_PLY][2]; // two killer moves per ply
 static int history[SQUARE_NB][SQUARE_NB]; // [from][to] history heuristic scores
 static constexpr int HISTORY_MAX = 2048;
 
@@ -79,6 +80,10 @@ static void orderMoves(Move* moves, int count, const Board& board, Move ttMove, 
 
 static int quiescence(Board& board, int alpha, int beta, int ply) {
     nodesSearched++;
+
+    if (ply >= MAX_PLY - 1)
+        return Eval::evaluate(board);
+
     if (shouldStop()) return 0;
 
     const bool inCheck = MoveGen::isInCheck(board, board.sideToMove());
@@ -138,9 +143,6 @@ void Search::clearTT() {
 }
 
 static int negamax(Board& board, int depth, int ply, int alpha, int beta, Move& bestMove, bool allowNull = true) {
-    if (depth == 0) return quiescence(board, alpha, beta, ply);
-    ++nodesSearched;
-    if (shouldStop()) return 0;
     if (ply > 0 && board.isRepetition()) return 0; // draw by repetition
     if (board.halfmoveClock() >= 100) return 0; // draw by 50-move rule
 
@@ -151,18 +153,21 @@ static int negamax(Board& board, int depth, int ply, int alpha, int beta, Move& 
             board.castlingRights() == 0 && pieces <= Syzygy::maxPieces()) {
             int wdl;
             if (Syzygy::probeWDL(board, wdl)) {
-                if (wdl > 0) return  (TB_WIN_SCORE - ply); // prefer shorter wins
-                if (wdl < 0) return -(TB_WIN_SCORE - ply); // prefer longer losses
+                if (wdl == 2) return  (TB_WIN_SCORE - ply); // prefer shorter wins
+                if (wdl == -2) return -(TB_WIN_SCORE - ply); // prefer longer losses
                 return 0;                                   // draw (incl. cursed/blessed)
             }
-        } else if (Endgame::g_mode == Endgame::Mode::MLP &&
-                pieces <= EndgameNet::MAX_PIECES) {
+        } else if (Endgame::g_mode == Endgame::Mode::MLP && EndgameNet::canProbe(board)) {
             const int v = EndgameNet::wdlVerdict(board);     // learned 3-way verdict
             if (v > 0) return  (TB_WIN_SCORE - ply);
             if (v < 0) return -(TB_WIN_SCORE - ply);
             return 0;
         }
     }
+
+    if (depth == 0 || ply >= MAX_PLY - 1) return quiescence(board, alpha, beta, ply);
+    ++nodesSearched;
+    if (shouldStop()) return 0;
 
     //Mate distance pruning
     alpha = std::max(alpha, -(MATE_SCORE - ply));
@@ -246,10 +251,12 @@ static int negamax(Board& board, int depth, int ply, int alpha, int beta, Move& 
 
         if (score >= beta) { // Only quiet moves teach us something useful; captures are already ordered by MVV-LVA
             if (!Search::stop && isQuiet) {
-                if (move.data != killerMoves[ply][0].data) {
-                    killerMoves[ply][1] = killerMoves[ply][0];
-                    killerMoves[ply][0] = move;
-                }
+                const int safePly = std::min(ply, MAX_PLY - 1);
+                if (safePly < MAX_PLY)
+                    if (move.data != killerMoves[safePly][0].data) {
+                        killerMoves[safePly][1] = killerMoves[safePly][0];
+                        killerMoves[safePly][0] = move;
+                    }
                 int bonus = std::min(depth * depth, HISTORY_MAX); // reward deeper cutoffs
                 int &historyScore = history[move.from()][move.to()];
                 historyScore += bonus - historyScore * bonus / HISTORY_MAX; // gravity: asymptotically bounded to ±HISTORY_MAX
