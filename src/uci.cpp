@@ -107,7 +107,8 @@ void UCI::loop() {
         if (token == "uci") {
             std::cout   << "id name ChessEngine\n"
                         << "id author BrainDBD\n"
-                        << "option name EndgameMode type combo default Classic var Classic var MLPBlend var MLPReplace var Syzygy\n"
+                        << "option name EndgameMode type combo default Classic var Classic var Syzygy var MLP\n"
+                        << "option name UseDTZ type check default true\n"
                         << "option name SyzygyPath type string default <empty>\n"
                         << "uciok\n";
         } else if (token == "isready") {
@@ -127,19 +128,26 @@ void UCI::loop() {
             if (!value.empty() && value.front() == ' ') value.erase(0, 1);
 
             if (name == "EndgameMode") {
-                if      (value == "MLPReplace") Endgame::g_mode = Endgame::Mode::MLPReplace;
-                else if (value == "MLPBlend")   Endgame::g_mode = Endgame::Mode::MLPBlend;
-                else if (value == "Syzygy") {
-                    Endgame::g_mode = Endgame::Mode::Syzygy;
-                    // If tables were not loaded via SyzygyPath yet, fall back to the compiled-in default path (convenient for manual testing).
+                if (value == "MLP" || value == "Syzygy") {
+                    Endgame::g_mode = (value == "MLP")
+                        ? Endgame::Mode::MLP
+                        : Endgame::Mode::Syzygy;
+                    // Both non-classical modes need the tables loaded: Syzygy for the WDL
+                    // verdict, MLP for the DTZ root probe (when UseDTZ is on). Fall back to
+                    // the compiled-in default path if not loaded yet (handy for manual testing).
                     if (!Syzygy::isReady()) {
                         bool ok = Syzygy::init(SYZYGY_PATH);
                         std::cout << "info string Syzygy init " << (ok ? "OK" : "FAILED")
                                 << " max=" << Syzygy::maxPieces() << std::endl;
                     }
                 }
-                else                            Endgame::g_mode = Endgame::Mode::Classic;
+                else {
+                    Endgame::g_mode = Endgame::Mode::Classic;
+                }
                 Search::clearTT();        // scores from the old mode are now invalid
+            } else if (name == "UseDTZ") {
+                Endgame::probeDTZ = (value == "true" || value == "1");
+                Search::clearTT();
             } else if (name == "SyzygyPath") {
                 // path supplied by the GUI / fastchess. Loads WDL+DTZ dirs.
                 if (!value.empty() && value != "<empty>") {

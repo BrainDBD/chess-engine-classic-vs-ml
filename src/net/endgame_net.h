@@ -10,17 +10,11 @@
 namespace EndgameNet {
 
     inline constexpr int MAX_PIECES = 6;
+    inline constexpr float T_DRAW = 0.35f;   // o0 cutoff: P(outcome >= draw)
+    inline constexpr float T_WIN  = 0.65f;   // o1 cutoff: P(outcome >= win)
 
-    // win-probability p -> centipawns via the logit (inverse sigmoid):
-    // cp = K * ln(p / (1-p)),  p=0.5 -> 0cp.
-    // K sets the cp scale; ~200 keeps a 0.75 win ~ +220cp, comparable to the
-    // classical eval (~100cp/pawn) so search margins still behave.
-    inline constexpr float K_LOGIT = 200.0f;
-    // Clamp well below MATE_THRESHOLD so the net never masquerades as a mate;
-    // the search still finds real mates via its own mate scoring at the leaves.
-    inline constexpr int CP_CAP = 2000;
-
-    inline float forward(const float* feat) {
+    // Returns the two threshold probabilities {P(>=draw), P(>=win)} into out[2]
+    inline void forward(const float* feat, float out[2]) {
         float x[EG_NET_IN];
         for (int i = 0; i < EG_NET_IN; ++i)
             x[i] = (feat[i] - EG_FEAT_MEAN[i]) / EG_FEAT_STD[i];
@@ -28,7 +22,7 @@ namespace EndgameNet {
         for (int j = 0; j < EG_NET_H1; ++j) {
             float s = EG_B1[j];
             for (int i = 0; i < EG_NET_IN; ++i) s += EG_W1[j][i] * x[i];
-            h1[j] = std::max(0.0f, s); // ReLU activation
+            h1[j] = std::max(0.0f, s);
         }
         float h2[EG_NET_H2];
         for (int j = 0; j < EG_NET_H2; ++j) {
@@ -36,19 +30,28 @@ namespace EndgameNet {
             for (int i = 0; i < EG_NET_H1; ++i) s += EG_W2[j][i] * h1[i];
             h2[j] = std::max(0.0f, s);
         }
-        float s = EG_B3;
-        for (int i = 0; i < EG_NET_H2; ++i) s += EG_W3[i] * h2[i];
-        return 1.f / (1.f + std::exp(-s));        // win probability, STM POV
+        // shared linear -> single logit (no bias; ordinal biases carry the offset)
+        float logit = 0.0f;
+        for (int i = 0; i < EG_NET_H2; ++i) logit += EG_W_SHARED[i] * h2[i];
+        out[0] = 1.f / (1.f + std::exp(-(logit + EG_THRESH_BIAS[0])));  // P(>=draw)
+        out[1] = 1.f / (1.f + std::exp(-(logit + EG_THRESH_BIAS[1])));  // P(>=win)
     }
 
-    // STM-POV centipawn evaluation. Drop-in below MAX_PIECES.
-    inline int evaluate(const Board& board) {
+    // Discrete WDL verdict, STM POV: +1 win / 0 draw / -1 loss
+    // Count thresholds passed at 0.5, then center to {-1,0,+1}
+    inline int wdlVerdict(const Board& board) {
         float feat[EG_NET_IN];
         EndgameFeatures<Board>::extract(board, feat);
-        float p = forward(feat);
-        p = std::clamp(p, 1e-4f, 1.0f - 1e-4f);
-        float cp = K_LOGIT * std::log(p / (1.0f - p));
-        int score = (int)std::lround(cp);
-        return std::clamp(score, -CP_CAP, CP_CAP);
+        float o[2];
+        forward(feat, o);
+        int passed = (o[0] > T_DRAW ? 1 : 0) + (o[1] > T_WIN ? 1 : 0); // 0,1,2
+        return passed - 1;                                            // -1,0,+1
     }
 }
+
+// Endgame net: CORAL ordinal head over geometry features.
+// Head: shared trunk -> single logit; two ordered biases b0 > b1 give
+//   o0 = sigmoid(logit + b0) = P(outcome >= draw)
+//   o1 = sigmoid(logit + b1) = P(outcome >= win)
+// Verdict = number of thresholds passed at 0.5: 0=loss, 1=draw, 2=win.
+// Ordinality is structural (b0 > b1 => o0 >= o1), so no draw-band is needed.

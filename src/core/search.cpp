@@ -4,6 +4,7 @@
 #include "transposition.h"
 #include "syzygy.h"
 #include "endgame_mode.h"
+#include "endgame_net.h"
 #include <algorithm>
 #include <vector>
 #include <chrono>
@@ -143,12 +144,23 @@ static int negamax(Board& board, int depth, int ply, int alpha, int beta, Move& 
     if (ply > 0 && board.isRepetition()) return 0; // draw by repetition
     if (board.halfmoveClock() >= 100) return 0; // draw by 50-move rule
 
-    if (Endgame::g_mode == Endgame::Mode::Syzygy && ply > 0 && board.castlingRights() == 0 && BitboardUtils::countBits(board.occupancy()) <= Syzygy::maxPieces()) {
-        int wdl;
-        if (Syzygy::probeWDL(board, wdl)) {
-            if (wdl > 0) return  (TB_WIN_SCORE - ply); // prefer shorter wins
-            if (wdl < 0) return -(TB_WIN_SCORE - ply); // prefer longer losses
-            return 0;                                   // draw (incl. cursed/blessed)
+    // In-search endgame verdict given by real Syzygy probing or MLP approximation
+    if (ply > 0) {
+        const int pieces = BitboardUtils::countBits(board.occupancy());
+        if (Endgame::g_mode == Endgame::Mode::Syzygy &&
+            board.castlingRights() == 0 && pieces <= Syzygy::maxPieces()) {
+            int wdl;
+            if (Syzygy::probeWDL(board, wdl)) {
+                if (wdl > 0) return  (TB_WIN_SCORE - ply); // prefer shorter wins
+                if (wdl < 0) return -(TB_WIN_SCORE - ply); // prefer longer losses
+                return 0;                                   // draw (incl. cursed/blessed)
+            }
+        } else if (Endgame::g_mode == Endgame::Mode::MLP &&
+                pieces <= EndgameNet::MAX_PIECES) {
+            const int v = EndgameNet::wdlVerdict(board);     // learned 3-way verdict
+            if (v > 0) return  (TB_WIN_SCORE - ply);
+            if (v < 0) return -(TB_WIN_SCORE - ply);
+            return 0;
         }
     }
 
@@ -269,7 +281,10 @@ Search::SearchResult Search::search(Board& board, const Limits& limits) {
     std::memset(killerMoves, 0, sizeof(killerMoves));
     std::memset(history, 0, sizeof(history));
 
-    if (Endgame::g_mode == Endgame::Mode::Syzygy) {
+    // DTZ root probe (move selection via exact conversion distances). Orthogonal to the verdict source: available in both Syzygy and MLP modes, gated by probeDTZ
+    // Turning it OFF forces the search to convert using only the in-search verdict, which is the matched condition for comparing the WDL table against the MLP as verdict sources
+    if ((Endgame::g_mode == Endgame::Mode::Syzygy ||
+        Endgame::g_mode == Endgame::Mode::MLP) && Endgame::probeDTZ) {
         Syzygy::RootProbeResult rp;
         if (Syzygy::probeRoot(board, rp) && rp.ok && !rp.move.isNone()) {
             std::cout << "info depth 1 score cp " << rp.score

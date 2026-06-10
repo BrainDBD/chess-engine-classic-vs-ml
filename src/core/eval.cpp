@@ -1,7 +1,5 @@
 #include "eval.h"
 #include "bitboard.h"
-#include "endgame_mode.h"
-#include "endgame_net.h"
 #include <algorithm>
 
 // Material values and phase weights
@@ -184,10 +182,6 @@ static int pawnStructure(const Board& board) {
 }
 
 int Eval::evaluate(const Board& board) {
-    const bool inEndgame = BitboardUtils::countBits(board.occupancy()) <= EndgameNet::MAX_PIECES;
-    if (inEndgame && Endgame::g_mode == Endgame::Mode::MLPReplace)
-        return EndgameNet::evaluate(board);
-
     int mgScore = 0, egScore = 0, phase = 0;
     for (int color = WHITE; color <= BLACK; ++color)
     {
@@ -213,9 +207,5 @@ int Eval::evaluate(const Board& board) {
     const int score = (mgScore * phase + egScore * (MAX_PHASE - phase)) / MAX_PHASE
                 + pawnStructure(board);
     const int stmScore = (board.sideToMove() == WHITE) ? score : -score;
-
-    if (inEndgame && Endgame::g_mode == Endgame::Mode::MLPBlend)
-        return (stmScore + EndgameNet::evaluate(board)) / 2;
-
     return stmScore;
 }
