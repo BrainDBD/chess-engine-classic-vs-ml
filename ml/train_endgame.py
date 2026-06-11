@@ -136,9 +136,10 @@ class EndgameOrdinalNet(nn.Module):
         return logit + self.ordered_biases()        # broadcast -> (batch, K-1)
 
 
-def coral_predict_class(probs: np.ndarray) -> np.ndarray:
-    # Count thresholds passed at 0.5 -> class {0,1,2}.
-    return (probs > 0.5).sum(axis=1).astype(int)
+def coral_predict_class(probs: np.ndarray, t_draw=0.5, t_win=0.5) -> np.ndarray:
+    # Count thresholds passed -> class {0,1,2}.
+        return ((probs[:, 0] > t_draw).astype(int)
+                + (probs[:, 1] > t_win).astype(int))
 
 
 def _ordinal_loss(logits: torch.Tensor, cum_targets: torch.Tensor) -> torch.Tensor:
