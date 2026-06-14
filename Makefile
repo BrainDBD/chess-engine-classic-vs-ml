@@ -1,6 +1,6 @@
 CXX      = g++
 CC       = gcc
-CXXFLAGS = -std=c++17 -O2 -Wall -Isrc -Isrc/core -Isrc/net -Isrc/syzygy
+CXXFLAGS = -std=c++17 -O3 -march=native -ffast-math -Wall -Isrc -Isrc/core -Isrc/net -Isrc/syzygy
 CFLAGS   = -std=c11   -O2 -Isrc/syzygy        # C11 for stdatomic.h; no -Wall to mute Fathom's noise
 
 # C++ engine sources

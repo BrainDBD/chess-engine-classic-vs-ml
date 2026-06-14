@@ -2,6 +2,7 @@
 #include "board.h"
 #include "movegen.h"
 #include "search.h"
+#include "eval.h"
 #include "attacks.h"
 #include "zobrist.h"
 #include "endgame_mode.h"
@@ -163,6 +164,65 @@ void UCI::loop() {
                             << " max=" << Syzygy::maxPieces() << std::endl;
                 }
             }
+        } else if (token == "benchverdict") {
+            int iters = 1000000;
+            iss >> iters;
+
+            auto bench = [&](const char* label, auto fn) {
+                volatile long sink = 0;
+                auto t0 = std::chrono::steady_clock::now();
+                for (int i = 0; i < iters; ++i) sink += fn();
+                auto t1 = std::chrono::steady_clock::now();
+                double ns = std::chrono::duration<double, std::nano>(t1 - t0).count() / iters;
+                std::cout << "info string " << label << ": " << ns
+                        << " ns/call (sink=" << sink << ")\n";
+                std::cout.flush();
+            };
+
+            float feat[EG_NET_IN];
+            bench("MLP extract only", [&]{
+                EndgameFeatures<Board>::extract(gameBoard, feat);
+                return (long)(feat[0] + feat[EG_NET_IN - 1]);   // consume output
+            });
+            EndgameFeatures<Board>::extract(gameBoard, feat);    // prime feat once
+            bench("MLP forward only", [&]{
+                float o[2]; EndgameNet::forward(feat, o);
+                return (long)(o[0] * 1000.0f + o[1] * 1000.0f);
+            });
+            bench("MLP verdict (extract+forward)", [&]{
+                return (long)EndgameNet::wdlVerdict(gameBoard);
+            });
+            bench("Classic eval", [&]{ return (long)Eval::evaluate(gameBoard); });
+
+            if (Syzygy::isReady() && Syzygy::canProbe(gameBoard)) {
+                bench("Syzygy WDL probe", [&]{
+                    int wdl = 0; Syzygy::probeWDL(gameBoard, wdl); return (long)wdl;
+                });
+            } else {
+                std::cout << "info string Syzygy not ready / not probeable -- skipping WDL bench\n";
+            }
+
+            bench("Classic eval", [&]{ return (long)Eval::evaluate(gameBoard); });
+
+            // Root DTZ probe is a ROOT-ONLY op (movegen + mutates board): benchmark
+            // it SEPARATELY at low iteration count, never at the per-node count.
+            if (Syzygy::isReady() && Syzygy::canProbe(gameBoard)) {
+                const int dtz_iters = 1000;        // not a million
+                volatile long sink = 0;
+                auto t0 = std::chrono::steady_clock::now();
+                for (int i = 0; i < dtz_iters; ++i) {
+                    Board tmp = gameBoard;
+                    Syzygy::RootProbeResult r;
+                    Syzygy::probeRoot(tmp, r);
+                    sink += r.dtz;
+                }
+                auto t1 = std::chrono::steady_clock::now();
+                double ns = std::chrono::duration<double, std::nano>(t1 - t0).count() / dtz_iters;
+                std::cout << "info string Syzygy root DTZ probe (root-only): " << ns
+                          << " ns/call over " << dtz_iters << " iters (sink=" << sink << ")\n";
+                std::cout.flush();
+            }
+            std::cout.flush();
         } else if (token == "go") {
             Search::stop = false; // arm the search
             parseGo(gameBoard, iss);
