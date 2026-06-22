@@ -10,8 +10,8 @@
 namespace EndgameNet {
 
     inline constexpr int MAX_PIECES = 6;
-    inline constexpr float T_DRAW = 0.5f;   // o0 cutoff: P(outcome >= draw)
-    inline constexpr float T_WIN  = 0.5f;   // o1 cutoff: P(outcome >= win)
+    inline constexpr float T_DRAW = 0.35f;   // o0 cutoff: P(outcome >= draw)
+    inline constexpr float T_WIN  = 0.65f;   // o1 cutoff: P(outcome >= win)
 
     // Returns the two threshold probabilities {P(>=draw), P(>=win)} into out[2]
     inline void forward(const float* feat, float out[2]) {
