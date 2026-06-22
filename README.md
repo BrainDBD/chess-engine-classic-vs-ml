@@ -52,7 +52,7 @@ python extract_dataset.py dataset.pgn --out endgame.jsonl \
     --max-pieces 6 --quiet-only --opening-skip 8 \
     --syzygy "tablebases/3-4-5-wdl,tablebases/6-wdl" --syzygy-only
 ```
-Proiectul a folosit fișierele PGN pentru lunile Aprilie și Mai.
+Comenziile de mai jos folosesc două seturi de date: `endgame.jsonl` a fost creat din fișierul PGN luat din luna Aprilie 2026, iar `may_static-test.jsonl` este setul de date obținut din fișierul lunii Mai, filtrat cu ajutorul script-ului `ml/sample_static_test.py`.
 
 **Antrenarea modelului**
 ```sh
