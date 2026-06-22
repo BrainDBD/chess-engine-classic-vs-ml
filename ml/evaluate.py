@@ -2,7 +2,7 @@ import argparse
 import collections
 import numpy as np
 import train_endgame as T
-from plot_confusion_matrix_wdl import plot_confusion_matrix
+from plots.plot_confusion_matrix_wdl import plot_confusion_matrix
 
 
 # signature is canonical (Q,R,B,N,P) and color-independent (stronger side first).
@@ -202,7 +202,7 @@ def mode_balanced(ds, cfg):
     # Deployed operating point (headline figure) + default 0.5/0.5 (appendix
     # companion that motivates the threshold sweep). Both on the balanced subset.
     confusion_at(model, ds.eg_feats, ds.labels, bal_val,
-                 cfg.t_draw, cfg.t_win, tag="Număr poziții ",
+                 cfg.t_draw, cfg.t_win, tag="Numar pozitii ",
                  plot_out=cfg.plot_out, normalize=cfg.plot_normalize)
     if cfg.plot_out:
         default_out = cfg.plot_out.replace(".pdf", "_default.pdf")
@@ -211,7 +211,7 @@ def mode_balanced(ds, cfg):
     else:
         default_out = None
     confusion_at(model, ds.eg_feats, ds.labels, bal_val,
-                 0.5, 0.5, tag="Număr poziții ",
+                 0.5, 0.5, tag="Numar pozitii ",
                  plot_out=default_out, normalize=cfg.plot_normalize)
 
     feature_ablation(model, ds.eg_feats, ds.labels, bal_val, ds.eg_names, cfg.batch)

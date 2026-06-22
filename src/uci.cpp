@@ -228,19 +228,19 @@ void UCI::loop() {
             parseGo(gameBoard, iss);
         } else if (token == "stop") {
             Search::stop = true;
-        // } else if (token == "wdltest") {
-        //     // Debug: print the ordinal net's verdict for the current position,
-        //     // for offline parity checking against the Python model. Not part of
-        //     // UCI; safe to leave in (or #ifdef out for release).
-        //     float feat[EG_NET_IN];
-        //     EndgameFeatures<Board>::extract(gameBoard, feat);
-        //     float o[2];
-        //     EndgameNet::forward(feat, o);
-        //     int v = EndgameNet::wdlVerdict(gameBoard);
-        //     const char* nm = (v > 0 ? "win" : v < 0 ? "loss" : "draw");
-        //     std::cout << "wdltest p_draw=" << o[0] << " p_win=" << o[1]
-        //               << " verdict=" << nm << "\n";
-        //     std::cout.flush();
+        } else if (token == "wdltest") {
+            // Debug: print the ordinal net's verdict for the current position,
+            // for offline parity checking against the Python model. Not part of
+            // UCI; safe to leave in (or #ifdef out for release).
+            float feat[EG_NET_IN];
+            EndgameFeatures<Board>::extract(gameBoard, feat);
+            float o[2];
+            EndgameNet::forward(feat, o);
+            int v = EndgameNet::wdlVerdict(gameBoard);
+            const char* nm = (v > 0 ? "win" : v < 0 ? "loss" : "draw");
+            std::cout << "wdltest p_draw=" << o[0] << " p_win=" << o[1]
+                      << " verdict=" << nm << "\n";
+            std::cout.flush();
         } else if (token == "quit") {
             Search::stop = true;
             break;
