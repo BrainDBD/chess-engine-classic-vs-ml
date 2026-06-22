@@ -46,6 +46,14 @@ chess-engine-classic-vs-ml/
 
 > Comenzile se rulează din folderul `ml/`.
 
+**Generarea setului de date**
+```sh
+python extract_dataset.py dataset.pgn --out endgame.jsonl \
+    --max-pieces 6 --quiet-only --opening-skip 8 \
+    --syzygy "tablebases/3-4-5-wdl,tablebases/6-wdl" --syzygy-only
+```
+Proiectul a folosit fișierele PGN pentru lunile Aprilie și Mai.
+
 **Antrenarea modelului**
 ```sh
 python train_endgame.py endgame.jsonl --max-samples 1000000 --epochs 20
