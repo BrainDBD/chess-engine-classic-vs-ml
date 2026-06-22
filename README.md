@@ -77,11 +77,6 @@ python evaluate.py endgame.jsonl --mode ablation --load net_ordinal.pt > ablatio
 python plots/plot_feature_ablation.py ablation_full.txt --out figures/ablation_full.pdf
 ```
 
-**Verificarea coliziunilor între caracteristici**
-```sh
-python feature_collision.py endgame.jsonl --val-frac 0.1 --seeds 42 --load net_ordinal.pt
-```
-
 **Tabelele PST ale regelui** (`king_pst_heatmaps.pdf`)
 ```sh
 python plots/plot_heatmap.py
