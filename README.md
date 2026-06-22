@@ -38,7 +38,7 @@ chess-engine-classic-vs-ml/
 │   └── plots/              # scripturile care generează figurile
 │       ├── plot_confusion_matrix_wdl.py
 │       ├── plot_feature_ablation.py
-│       └── create_heatmap.py
+│       └── plot_heatmap.py
 └── figures/                # PDF-urile generate folosite în document
 ```
 
